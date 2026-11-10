@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dungeon Lord: Monster Empire</title>
+  <meta name="description" content="เกมบริหารดันเจี้ยน Pixel Art — จ้าง ฝึก วิวัฒนาการมอนสเตอร์ และกำจัดผู้กล้า">
+  <meta name="theme-color" content="#120e24">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l5 6-5 8-5-8z' fill='%23c86aff' stroke='%23000'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600&family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar" class="win" aria-label="สถานะดันเจี้ยน"></header>
+    <main id="stage">
+      <canvas id="map" aria-label="แผนที่ดันเจี้ยน"></canvas>
+      <div id="mapTools">
+        <button class="btn sm" data-act="zoom" data-v="1.25" title="ซูมเข้า">+</button>
+        <button class="btn sm" data-act="zoom" data-v="0.8" title="ซูมออก">−</button>
+        <button class="btn sm" data-act="center" title="กลับไปกลางดันเจี้ยน">◎</button>
+      </div>
+      <div id="modeBar" class="win hidden"></div>
+      <div id="toasts" aria-live="polite"></div>
+      <div id="detail" class="win hidden"></div>
+      <aside id="panel" class="win hidden">
+        <div class="panel-head"><h2 id="panelTitle"></h2><button class="x" data-act="closePanel" aria-label="ปิด">×</button></div>
+        <div class="panel-body" id="panelBody"></div>
+      </aside>
+    </main>
+    <nav id="bottombar" class="win" aria-label="เมนูหลัก"></nav>
+  </div>
+  <div id="modal-root"></div>
+  <div id="tooltip" class="win hidden"></div>
+  <div id="title">
+    <canvas id="titleArt"></canvas>
+    <div class="title-box win">
+      <h1 class="logo"><span class="l1">DUNGEON LORD</span><span class="l2">MONSTER EMPIRE</span></h1>
+      <p class="tagline">ฟื้นฟูดันเจี้ยนที่ได้รับเป็นมรดก จ้างมอนสเตอร์ และหยุดผู้กล้าทุกคนก่อนถึง Core</p>
+      <div class="title-menu" id="titleMenu"></div>
+    </div>
+    <div class="version">Prototype v0.1</div>
+  </div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

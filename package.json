@@ -1,0 +1,12 @@
+{
+  "name": "dungeon-lord-monster-empire",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DUNGEON LORD: MONSTER EMPIRE — Pixel Art Top-down Dungeon Management (Prototype v0.1)",
+  "scripts": {
+    "test": "node tests/sim.test.mjs",
+    "dev": "npx vercel dev"
+  },
+  "engines": { "node": ">=18" }
+}
