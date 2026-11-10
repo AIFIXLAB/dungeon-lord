@@ -108,10 +108,21 @@ export class UI {
       ptrs.set(e.pointerId, pos(e));
       if (ptrs.size === 2) {
         const [a, b] = [...ptrs.values()];
-        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) }; down = null; return;
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+        if (down?.place && down.prev && !down.moved) { this.mode.tx = down.prev.tx; this.mode.ty = down.prev.ty; }
+        down = null; return;
       }
       const p = pos(e);
-      down = { ...p, sx: p.x, sy: p.y, moved: false, button: e.button, touch: e.pointerType === 'touch' };
+      const touch = e.pointerType !== 'mouse';
+      down = { ...p, sx: p.x, sy: p.y, moved: false, button: e.button, touch };
+      // จอสัมผัส/ปากกา: ในโหมดวางห้อง/กับดัก นิ้วเดียว = ลากตัววาง (สองนิ้ว = เลื่อน/ซูมแผนที่)
+      if (touch && this.placing()) {
+        const m = this.mode;
+        down.place = true; down.prev = m.tx != null ? { tx: m.tx, ty: m.ty } : null;
+        down.wasInside = this.ghostContains(p);
+        if (!down.wasInside) this.setGhost(p);
+        else { const w = this.r.screenToWorld(p.x, p.y); down.grab = { dx: w.x - m.tx, dy: w.y - m.ty }; }
+      }
       painted = new Set();
       if (this.mode?.type === 'corridor' && e.button === 0) this.paintCorridor(p, painted);
     });
@@ -121,10 +132,16 @@ export class UI {
       if (pinch && ptrs.size === 2) {
         const [a, b] = [...ptrs.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
-        this.r.zoomAt(d / pinch.d, (a.x + b.x) / 2, (a.y + b.y) / 2); pinch.d = d; return;
+        const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+        this.r.pan(cx - pinch.cx, cy - pinch.cy);
+        this.r.zoomAt(d / pinch.d, cx, cy); pinch.d = d; pinch.cx = cx; pinch.cy = cy; return;
       }
       this.hover(p, e);
       if (!down) return;
+      if (down.place) {
+        if (!down.moved && Math.hypot(p.x - down.sx, p.y - down.sy) < 6) return;
+        down.moved = true; this.setGhost(p, down.grab); return;
+      }
       if (this.mode?.type === 'corridor' && down.button === 0) { this.paintCorridor(p, painted); down.moved = true; return; }
       const dx = p.x - down.x, dy = p.y - down.y;
       if (!down.moved && Math.hypot(p.x - down.sx, p.y - down.sy) < 6) return;
@@ -136,6 +153,12 @@ export class UI {
       if (ptrs.size < 2) pinch = null;
       if (!down) return;
       const d = down; down = null;
+      if (d.place) {
+        // แตะซ้ำบนตัววางเดิม = ยืนยันสร้าง · ลากแล้วปล่อย = รอกดปุ่ม ✔ สร้างที่นี่
+        if (!d.moved && d.wasInside) this.confirmPlace();
+        this.renderModeBar();
+        return;
+      }
       if (d.moved) return;
       if (d.button === 2) { this.setMode(null); return; }
       this.mapClick(pos(e), d.touch);
@@ -144,6 +167,30 @@ export class UI {
     cv.addEventListener('pointercancel', (e) => { ptrs.delete(e.pointerId); down = null; pinch = null; });
     cv.addEventListener('pointerleave', () => { $('#tooltip').classList.add('hidden'); });
     cv.addEventListener('wheel', (e) => { e.preventDefault(); const p = pos(e); this.r.zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, p.x, p.y); }, { passive: false });
+  }
+
+  // ---------- วางห้อง/กับดักด้วยการลาก (iPad / มือถือ) ----------
+  placing() { const m = this.mode; return !!m && (m.type === 'room' || m.type === 'trap' || (m.type === 'move' && m.roomId)); }
+  ghostDims() {
+    const m = this.mode; if (!m) return [1, 1];
+    if (m.type === 'room') return this.g.dungeon.roomDims(m.roomType, m.rot || 0);
+    if (m.type === 'move' && m.roomId) return this.g.dungeon.roomDims(this.g.dungeon.getRoom(m.roomId).type, m.rot || 0);
+    return [1, 1];
+  }
+  ghostContains(p) {
+    const m = this.mode; if (m?.tx == null) return false;
+    const w = this.r.screenToWorld(p.x, p.y), [gw, gh] = this.ghostDims();
+    const pad = gw === 1 ? 0.6 : 0.2;
+    return w.x >= m.tx - pad && w.x < m.tx + gw + pad && w.y >= m.ty - pad && w.y < m.ty + gh + pad;
+  }
+  setGhost(p, grab) {
+    const m = this.mode; const w = this.r.screenToWorld(p.x, p.y); const [gw, gh] = this.ghostDims();
+    if (grab) { m.tx = Math.round(w.x - grab.dx); m.ty = Math.round(w.y - grab.dy); }
+    else { m.tx = Math.floor(w.x - gw / 2 + 0.5); m.ty = Math.floor(w.y - gh / 2 + 0.5); }
+  }
+  confirmPlace() {
+    const m = this.mode; if (!m || m.tx == null) return;
+    this.doPlace(m.tx, m.ty);
   }
 
   tileAt(p) { const w = this.r.screenToWorld(p.x, p.y); return { tx: Math.floor(w.x), ty: Math.floor(w.y), wx: w.x, wy: w.y }; }
@@ -196,9 +243,21 @@ export class UI {
     const { tx, ty, wx, wy } = this.tileAt(p);
     const m = this.mode;
     if (m) {
-      // มือถือ: แตะครั้งแรกเลื่อนตำแหน่ง แตะซ้ำเพื่อยืนยัน
-      if (touch && (m.tx !== tx || m.ty !== ty) && m.type !== 'corridor') { m.tx = tx; m.ty = ty; return; }
+      if (m.type === 'move' && !m.roomId) {
+        const room = this.g.dungeon.roomAtTile(tx, ty);
+        if (!room) { this.flash('เลือกห้องที่จะย้าย'); return; }
+        m.roomId = room.id; m.rot = room.rot; m.tx = room.x; m.ty = room.y; this.renderModeBar(); return;
+      }
       m.tx = tx; m.ty = ty;
+      this.doPlace(tx, ty);
+      return;
+    }
+    this.mapSelect(tx, ty, wx, wy);
+  }
+
+  doPlace(tx, ty) {
+    const m = this.mode;
+    {
       if (m.type === 'room') {
         const r = this.g.dungeon.buildRoom(m.roomType, tx, ty, m.rot || 0);
         if (!r.ok) this.flash(r.reason); else { this.g.audio?.play('build'); if (ROOMS[m.roomType].unique || this.g.state.gold < ROOMS[m.roomType].cost) this.setMode(null); }
@@ -219,11 +278,12 @@ export class UI {
           const r = this.g.dungeon.placeTrap(m.trapType, tx, ty);
           if (!r.ok) this.flash(r.reason); else this.g.audio?.play('build');
         }
-      } else if (m.type === 'corridor') {
-        // handled by paint
       }
-      return;
+      this.renderModeBar();
     }
+  }
+
+  mapSelect(tx, ty, wx, wy) {
     const u = this.unitAt(wx, wy);
     if (u) return this.select({ kind: u.side, id: u.id });
     const fo = this.g.state.floor.find((o) => Math.abs(o.x - wx) < 0.4 && Math.abs(o.y - wy) < 0.4);
@@ -246,7 +306,12 @@ export class UI {
   setMode(m) {
     this.mode = m;
     this.r.overlay = m;
-    if (m) { this.select(null); if (window.innerWidth < 900) this.openPanel(null); }
+    const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+    if (m) {
+      this.select(null);
+      if (window.innerWidth < 900 || coarse) this.openPanel(null);
+      if (coarse && m.tx == null && this.placing()) { const cv = $('#map'); this.setGhost({ x: cv.clientWidth / 2, y: cv.clientHeight / 2 }); }
+    }
     this.renderModeBar();
   }
 
@@ -260,7 +325,19 @@ export class UI {
     if (m.type === 'corridor') t = m.erase ? 'ลากเพื่อลบทางเดิน' : `ลากเพื่อสร้างทางเดิน (${BALANCE.economy.corridorCost}G/ช่อง)`;
     if (m.type === 'trap') t = m.moveId ? `ย้าย <b>${TRAPS[m.trapType].th}</b> — แตะตำแหน่งใหม่` : `วาง <b>${TRAPS[m.trapType].th}</b> (${fmt(TRAPS[m.trapType].price)}G)${TRAPS[m.trapType].place === 'wall' ? ' · ต้องชิดผนัง' : ''}`;
     const rot = m.type === 'room' || (m.type === 'move' && m.roomId) ? '<button class="btn sm" data-act="rotate">หมุน (R)</button>' : '';
-    bar.innerHTML = `<span>${t}</span>${rot}<button class="btn sm red" data-act="cancelMode">เสร็จ</button>`;
+    const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+    let ok = '';
+    if (this.placing() && m.tx != null) {
+      const g = this.g.dungeon;
+      const chk = m.type === 'room' ? g.canPlaceRoom(m.roomType, m.tx, m.ty, m.rot || 0)
+        : m.type === 'move' ? g.canPlaceRoom(g.getRoom(m.roomId).type, m.tx, m.ty, m.rot || 0, m.roomId)
+        : g.canPlaceTrap(m.trapType, m.tx, m.ty, m.moveId || null);
+      if (coarse && !chk.ok) t += ` · <span class="bad-t">${esc(chk.reason)}</span>`;
+      if (coarse) ok = `<button class="btn sm gold" data-act="confirmPlace" ${chk.ok ? '' : 'disabled'}>✔ ${m.type === 'move' || m.moveId ? 'ย้ายมาที่นี่' : 'สร้างที่นี่'}</button>`;
+    }
+    if (coarse && m.type === 'room') t += '<br><span class="muted">ลากห้องไปวาง · สองนิ้วเลื่อน/ซูมแผนที่</span>';
+    if (coarse && m.type === 'trap') t += '<br><span class="muted">ลากกับดักไปวาง · สองนิ้วเลื่อน/ซูมแผนที่</span>';
+    bar.innerHTML = `<span>${t}</span>${ok}${rot}<button class="btn sm red" data-act="cancelMode">เสร็จ</button>`;
     bar.classList.remove('hidden');
   }
 
@@ -991,8 +1068,9 @@ export class UI {
     speed(d) { this.g.time.setSpeed(+d.v); },
     zoom(d) { this.r.zoomAt(+d.v, this.r.vw / 2, this.r.vh / 2); },
     center() { this.r.centerOnArea(); },
-    rotate() { if (this.mode) this.mode.rot = ((this.mode.rot || 0) + 1) % 2; },
+    rotate() { if (this.mode) { this.mode.rot = ((this.mode.rot || 0) + 1) % 2; this.renderModeBar(); } },
     cancelMode() { this.setMode(null); },
+    confirmPlace() { this.confirmPlace(); },
     gotoBuild() { this.tab.build = 'rooms'; this.panel = null; this.openPanel('build'); },
     selMon(d) { this.select({ kind: 'monster', id: d.id }); const m = this.g.monsters.get(d.id); if (m && !m.ko) { this.r.cam.x = m.x * 16; this.r.cam.y = m.y * 16; } },
     selRoom(d) { this.select({ kind: 'room', id: d.id }); },

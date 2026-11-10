@@ -611,7 +611,9 @@ export class Renderer {
       if (!type) return;
       const [w, h] = g.dungeon.roomDims(type, o.rot || 0);
       const chk = o.type === 'move' ? g.dungeon.canPlaceRoom(type, o.tx, o.ty, o.rot || 0, o.roomId) : g.dungeon.canPlaceRoom(type, o.tx, o.ty, o.rot || 0);
-      c.fillStyle = chk.ok ? (chk.connected ? 'rgba(80,255,120,0.35)' : 'rgba(255,216,74,0.35)') : 'rgba(255,60,60,0.35)';
+      const art = ROOMS[type]?.art?.[0] && roomImage(ROOMS[type].art[0]);
+      if (art) { c.save(); c.globalAlpha = 0.75; c.imageSmoothingEnabled = true; c.drawImage(art, o.tx * TS, o.ty * TS, w * TS, h * TS); c.restore(); }
+      c.fillStyle = chk.ok ? (chk.connected ? 'rgba(80,255,120,0.22)' : 'rgba(255,216,74,0.25)') : 'rgba(255,60,60,0.4)';
       c.fillRect(o.tx * TS, o.ty * TS, w * TS, h * TS);
       c.strokeStyle = chk.ok ? '#6aff8a' : '#ff4a4a'; c.lineWidth = 1;
       c.strokeRect(o.tx * TS + 0.5, o.ty * TS + 0.5, w * TS - 1, h * TS - 1);
