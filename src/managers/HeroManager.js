@@ -1,9 +1,12 @@
 // HeroManager — ผู้กล้า 60 คลาส (Hero Class Design Bible): ค่าสถานะ, Rank Scaling, ปาร์ตี้ + Formation,
 // Hero AI ตามลำดับความสำคัญ (§6.1), Summon, Revive, ตรวจจับกับดัก, รางวัลเมื่อกำจัด, การโจมตี Core
 import { BALANCE } from '../config/balance.js';
-import { HERO_CLASSES, HERO_RANKS, HERO_NAMES, HERO_TITLES, HERO_BASE, heroLootFor } from '../data/heroes.js';
+import { HERO_CLASSES, HERO_RANKS, HERO_NAMES, HERO_TITLES, HERO_BASE } from '../data/heroes.js';
 import { LEVELS } from '../data/levels.js';
-import { CLASS_MATERIALS } from '../data/items.js';
+import { ITEMS, REMAINS, SUPPLIES, DROP_POOL_CATS } from '../data/items.js';
+const RAR = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+const POOL = {};
+for (const [id, d] of Object.entries(ITEMS)) if (DROP_POOL_CATS.some((c) => d.code.startsWith(c + '-'))) (POOL[d.rarity] ||= []).push(id);
 import { TRAPS } from '../data/traps.js';
 import { uid, dist, hourOf } from '../core/util.js';
 import { moveToward, clearPath } from '../core/movement.js';
@@ -29,22 +32,45 @@ export class HeroManager {
   // ---------- Schedule ----------
   dailyCount() {
     const s = this.game.state;
-    return Math.min(HB.maxDailyCount, Math.floor(HB.baseDailyCount + (s.dungeonLevel - 1) * HB.perLevelDaily + Math.min(HB.maxRepBonus, s.reputation * HB.perReputation)));
+    const days = Math.floor(s.time / 1440);
+    return Math.min(HB.maxDailyCount, Math.floor(HB.baseDailyCount + (s.dungeonLevel - 1) * HB.perLevelDaily
+      + Math.min(HB.maxRepBonus, s.reputation * HB.perReputation) + Math.min(HB.maxDayBonus, days * HB.perDay)));
+  }
+
+  // สุ่มประเภทวัน: เงียบ / ปกติ / คึกคัก / บุกหนัก — จำนวนและขนาดปาร์ตี้ผันผวน
+  rollDayType() {
+    const day = Math.floor(this.game.state.time / 1440) + 1;
+    const types = HB.dayTypes.filter((t) => !t.minDay || day >= t.minDay);
+    const total = types.reduce((a, t) => a + t.w, 0);
+    let r = this.game.rng.next() * total;
+    for (const t of types) { r -= t.w; if (r < 0) return t; }
+    return HB.dayTypes[1];
   }
 
   scheduleDay(dayStartMinutes) {
     const g = this.game, rng = g.rng;
     const lvl = LEVELS[g.state.dungeonLevel - 1];
-    let remaining = this.dailyCount();
+    const type = g.state.time < 1440 ? HB.dayTypes[1] : this.rollDayType();
+    let remaining = Math.max(1, Math.round(this.dailyCount() * rng.range(type.mult[0], type.mult[1])));
+    const maxParty = Math.min(HB.partyCap, lvl.party + type.partyBonus);
+    g.state.dayType = { id: type.id, th: type.th, count: remaining };
     const sched = [];
     while (remaining > 0) {
-      const size = Math.min(remaining, rng.int(1, lvl.party));
+      // เอนไปทางปาร์ตี้ใหญ่ (สุ่ม 2 ครั้งเอาค่ามาก) ในวันคึกคัก/บุกหนัก
+      const roll = type.bigBias ? Math.max(rng.int(1, maxParty), rng.int(1, maxParty)) : rng.int(1, maxParty);
+      const size = Math.min(remaining, roll);
       remaining -= size;
       const hour = rng.chance(HB.nightSpawnChance) ? (rng.chance(0.5) ? rng.range(22, 24) : rng.range(0, 6)) : rng.range(HB.spawnStartHour, HB.spawnEndHour);
       sched.push({ time: dayStartMinutes + hour * 60, size });
+      // คลื่นต่อเนื่อง: ปาร์ตี้ตามมาติดๆ
+      if (remaining > 0 && rng.chance(type.waveChance)) {
+        const s2 = Math.min(remaining, rng.int(1, maxParty)); remaining -= s2;
+        sched.push({ time: dayStartMinutes + hour * 60 + rng.range(8, 25), size: s2 });
+      }
     }
     sched.sort((a, b) => a.time - b.time);
     g.state.heroSchedule = sched;
+    if (type.msg) g.notify(`${type.msg} (คาดว่า ${g.state.dayType.count} คน)`, type.id === 'quiet' ? 'info' : 'warn');
   }
 
   // ---------- Stats (Hero Bible §1–2) ----------
@@ -148,7 +174,6 @@ export class HeroManager {
       g.combat.tickStatus(h, dt);
       if (h.dead || h.downed) continue;
       if (!g.combat.canAct(h)) { h.moving = false; continue; }
-      if (!h.summon) this.checkTraps(h);
       if (h.dead || h.downed) continue;
       this.think(h, dt, monsters);
     }
@@ -176,38 +201,6 @@ export class HeroManager {
     h.moving = true; h.facing = 1; h.dir = 'right';
     if (d <= sp) { h.x = e.x; h.y = e.y; h.inside = true; h.state = 'advance'; }
     else { h.x += dx / d * sp; h.y += dy / d * sp; }
-  }
-
-  checkTraps(h) {
-    const g = this.game;
-    const tx = Math.floor(h.x), ty = Math.floor(h.y);
-    const party = this.party(h.partyId);
-    for (const t of g.dungeon.d.traps) {
-      if (t.cd > 0 || t.durability <= 0) continue;
-      const def = TRAPS[t.type];
-      if (Math.hypot(t.x + 0.5 - h.x, t.y + 0.5 - h.y) > def.range) continue;
-      if (def.range <= 0.9 && (t.x !== tx || t.y !== ty)) continue;
-      const known = party?.knownTraps?.includes(t.id);
-      if ((h.ai.disarm || known) && g.rng.chance(known ? 0.6 : BALANCE.traps.rogueDisarmChance)) {
-        t.durability = Math.max(0, t.durability - 5); t.cd = def.cooldown;
-        g.combat.text(h, 'DISARM', '#cccccc');
-        continue;
-      }
-      t.cd = def.cooldown; t.durability -= BALANCE.traps.durabilityPerTrigger; t.fired = 0.3;
-      const dmg = def.damage * Math.pow(BALANCE.traps.upgradeDamageMult, t.level - 1) * (1 + (g.state.dungeonLevel - 1) * BALANCE.traps.levelScale) * 3;
-      const targets = def.aoe ? this.list.filter((o) => o.inside && !o.dead && !o.downed && Math.hypot(o.x - h.x, o.y - h.y) <= def.aoe) : [h];
-      for (const tg of targets) {
-        const ts = tg.stats;
-        let d = dmg * (100 / (100 + ts.def * 0.5)) * g.combat.elementMult(def.element, tg, ts);
-        if (ts.weak.includes('trap')) d *= BALANCE.combat.tagWeakness;
-        g.combat.applyDamage(null, tg, Math.max(1, Math.round(d)), { color: '#ffaa4a' });
-        if (def.status && !tg.dead) g.combat.addStatus(tg, def.status);
-      }
-      g.combat.burst({ x: t.x + 0.5, y: t.y + 0.5 }, def.aoe || 0.5, def.element === 'none' ? 'trap' : def.element);
-      g.audio?.play('trap');
-      if (t.durability <= 0) g.notify(`${def.name} พังแล้ว — ซ่อมได้ที่เมนูดันเจี้ยน`, 'warn');
-      if (h.dead || h.downed) return;
-    }
   }
 
   trapCost(h) {
@@ -411,23 +404,28 @@ export class HeroManager {
     } else if (p.escaped === 0) g.notify('กำจัดปาร์ตี้ได้ แต่ Core ได้รับความเสียหาย (ไม่นับเป็นการป้องกันสำเร็จ)', 'warn');
   }
 
+  // ระบบดรอป (system_rules.json): ทอยตามจำนวนครั้งของระดับผู้กล้า + ชิ้นส่วนผู้กล้าการันตี
   rollLoot(h) {
-    const g = this.game, rng = g.rng, L = BALANCE.loot;
-    const items = [];
-    const c = HERO_CLASSES[h.cls];
+    const g = this.game, rng = g.rng, D = BALANCE.drops, L = BALANCE.loot;
+    const tier = D.tiers[h.rank] || 'normal';
     const tr = g.dungeon.roomsOfType('treasure_room')[0];
-    const rareBonus = tr ? g.dungeon.roomEffect(tr, 'rareBonus') : 0;
-    if (rng.chance(L.equipmentDropChance + rareBonus * 0.5)) {
-      const weights = { ...L.rarityWeights };
-      const ri = HERO_RANKS.indexOf(h.rank);
-      weights.common = Math.max(10, weights.common - ri * 8 - rareBonus * 100);
-      weights.uncommon += ri * 4; weights.rare += ri * 2 + rareBonus * 30; weights.epic += ri * 0.8;
-      items.push({ itemId: rng.pick(heroLootFor(h.cls)), rarity: rng.weighted(weights), qty: 1 });
+    const rareBonus = (tr ? g.dungeon.roomEffect(tr, 'rareBonus') * 100 : 0) + D.rarityBonus[tier];
+    const items = [];
+    const push = (itemId, qty = 1) => { const ex = items.find((x) => x.itemId === itemId); if (ex) ex.qty += qty; else items.push({ itemId, qty }); };
+    push(rng.pick(rng.chance(0.75) ? REMAINS.slice(0, 4) : REMAINS), rng.int(...D.remainsQty));
+    if (tier !== 'normal') push(rng.pick(SUPPLIES));
+    const w = { ...D.rarityWeights };
+    w.common = Math.max(10, w.common - rareBonus); w.rare += rareBonus * 0.6; w.epic += rareBonus * 0.3; w.legendary += rareBonus * 0.08;
+    let gotRare = false;
+    for (let i = 0; i < D.rolls[tier]; i++) {
+      let r = rng.weighted(w);
+      while (!POOL[r] && RAR.indexOf(r) > 0) r = RAR[RAR.indexOf(r) - 1];
+      if (RAR.indexOf(r) >= 2) gotRare = true;
+      push(rng.pick(POOL[r]));
     }
-    if (rng.chance(L.materialDropChance)) items.push({ itemId: rng.pick(CLASS_MATERIALS[c.attack] || ['bone']), rarity: 'common', qty: rng.int(1, 2) });
-    if (rng.chance(L.crystalDropChance[h.rank] + rareBonus * 0.1)) items.push({ itemId: rng.chance(0.75) ? 'evolution_crystal' : 'fusion_crystal', rarity: 'rare', qty: 1 });
-    if (rng.chance(L.coreDropChance[h.rank])) items.push({ itemId: 'monster_core', rarity: 'epic', qty: 1 });
-    if (rng.chance(L.potionDropChance)) items.push({ itemId: 'health_potion', rarity: 'common', qty: 1 });
+    if (tier === 'boss' && !gotRare) push(rng.pick(POOL.rare));
+    if (rng.chance(L.crystalDropChance[h.rank] + rareBonus / 1000)) push(rng.chance(0.75) ? 'evolution_crystal' : 'fusion_crystal');
+    if (rng.chance(L.coreDropChance[h.rank])) push('monster_core');
     return { items, gold: h.gold };
   }
 

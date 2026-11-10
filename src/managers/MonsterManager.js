@@ -77,6 +77,8 @@ export class MonsterManager {
       for (const [k, v] of Object.entries(this.game.inventory.itemStats(it))) s[k] = (s[k] || 0) + v;
     }
     if (m.temp) for (const k of ['hp', 'atk', 'matk', 'def', 'mdef']) s[k] *= m.tempScale || 0.6;
+    const fb = m.foodBuff?.buff;
+    if (fb) for (const k of ['hp', 'atk', 'def', 'matk', 'mp']) if (fb[k]) s[k] *= 1 + fb[k];
     return s;
   }
 
@@ -107,11 +109,17 @@ export class MonsterManager {
       if (room && room.id === m.assignment.roomId && room.type === 'guard_room') def *= 1 + this.game.dungeon.roomEffect(room, 'defBonus');
     }
     const berserk = (m.mutations || []).reduce((a, k) => a + (MUTATIONS[k]?.berserk || 0), 0);
+    const fb = m.foodBuff?.buff || {};
+    const resist = { ...(sp.resist || {}) }; const dmgBonus = {};
+    for (const [k, v] of Object.entries(fb)) {
+      if (k.startsWith('res_')) resist[k.slice(4)] = (resist[k.slice(4)] ?? 1) * (1 - v);
+      if (k.startsWith('dmg_')) dmgBonus[k.slice(4)] = v;
+    }
     return {
       hp: Math.round(s.hp), mp: s.mp, atk: s.atk * mult, matk: s.matk * mult, def, mdef: s.mdef,
       spd: s.spd * (m.isBoss && m.phase >= 2 ? 1 + BB.phase2Spd : 1), acc: s.acc, eva: s.eva + (pas.eva || 0), crit: s.crit + (pas.crit || 0), critDmg: s.critDmg,
-      res: s.res + (pas.res || 0) + (m.isBoss ? 0.4 : 0), range: s.range, aspd: s.aspd,
-      element: sp.element, resist: sp.resist || {}, weak: sp.weak || [], family: sp.family, roleTag: sp.role,
+      res: s.res + (pas.res || 0) + (m.isBoss ? 0.4 : 0), range: s.range, aspd: s.aspd * (1 + (fb.aspd || 0)),
+      element: sp.element, resist, dmgBonus, lifesteal: fb.lifesteal || 0, weak: sp.weak || [], family: sp.family, roleTag: sp.role,
       dmgTaken: (pas.dmgTaken || 1) * (tr.dmgTaken || 1), cdMult: (pas.cdMult || 1) * (tr.cdMult || 1),
       healMult: pas.healMult || 1, workMult: pas.workMult || 1, statusMult: pas.statusMult || 1, berserk,
       rarityRank: RARITY_ORDER.indexOf(sp.rarity),
@@ -228,7 +236,7 @@ export class MonsterManager {
   gainExp(m, amount) {
     if (!m || m.temp || m.level >= this.levelCap(m)) return;
     const tr = PERSONALITIES[m.trait] || {};
-    m.exp += amount * (tr.expMult || 1);
+    m.exp += amount * (tr.expMult || 1) * (1 + (m.foodBuff?.buff?.exp || 0));
     let leveled = false;
     const tierBefore = tierOf(m.level).name;
     while (m.level < this.levelCap(m) && m.exp >= this.expToNext(m.level)) {

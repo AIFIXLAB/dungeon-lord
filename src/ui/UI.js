@@ -5,8 +5,8 @@ import { BOSSES, BOSS_TIERS } from '../data/bosses.js';
 import { spriteIcon, onAssetsReady } from '../render/atlas.js';
 import { RECIPES as FUSION_RECIPES } from '../managers/FusionManager.js';
 import { ROOMS } from '../data/rooms.js';
-import { ITEMS, RECIPES } from '../data/items.js';
-import { TRAPS } from '../data/traps.js';
+import { ITEMS, RECIPES, STATIONS, INV_TABS } from '../data/items.js';
+import { TRAPS, TRAP_LEVELS, TYPE_COLOR, COMBOS, MONSTER_SYNERGY } from '../data/traps.js';
 import { EVENTS } from '../data/events.js';
 import { LEVELS } from '../data/levels.js';
 import { HERO_CLASSES } from '../data/heroes.js';
@@ -164,7 +164,7 @@ export class UI {
     } else {
       const room = this.g.dungeon.roomAtTile(tx, ty);
       const fo = this.g.state.floor.find((o) => Math.abs(o.x - wx) < 0.4 && Math.abs(o.y - wy) < 0.4);
-      if (fo) html = { corpse: 'ศพผู้กล้า — รอทีมทำความสะอาด', blood: 'คราบเลือด', loot: `Loot: ${(fo.items || []).map((i) => ITEMS[i.itemId]?.name).join(', ') || ''} ${fo.gold ? `${fo.gold}G` : ''}`, debris: 'เศษหิน' }[fo.type];
+      if (fo) html = { corpse: 'ศพผู้กล้า — รอทีมทำความสะอาด', blood: 'คราบเลือด', loot: `Loot: ${(fo.items || []).map((i) => this.iname(i.itemId)).join(', ') || ''} ${fo.gold ? `${fo.gold}G` : ''}`, debris: 'เศษหิน' }[fo.type];
       else if (room) html = `<b>${ROOMS[room.type].th}</b> Lv.${room.level}${room.status !== 'active' ? '<br><span class="bad-t">ไม่เชื่อมต่อทางเดิน</span>' : ''}${this.g.cleaning.isDirty(room) ? '<br><span class="bad-t">ห้องสกปรก</span>' : ''}`;
     }
     if (!html) { tt.classList.add('hidden'); return; }
@@ -212,8 +212,13 @@ export class UI {
           if (!r.ok) this.flash(r.reason); else this.setMode(null);
         }
       } else if (m.type === 'trap') {
-        const r = this.g.dungeon.placeTrap(m.trapType, tx, ty);
-        if (!r.ok) this.flash(r.reason); else this.g.audio?.play('build');
+        if (m.moveId) {
+          const r = this.g.dungeon.moveTrap(m.moveId, tx, ty);
+          if (!r.ok) this.flash(r.reason); else { this.g.audio?.play('build'); this.setMode(null); }
+        } else {
+          const r = this.g.dungeon.placeTrap(m.trapType, tx, ty);
+          if (!r.ok) this.flash(r.reason); else this.g.audio?.play('build');
+        }
       } else if (m.type === 'corridor') {
         // handled by paint
       }
@@ -253,7 +258,7 @@ export class UI {
     if (m.type === 'room') t = `วาง <b>${ROOMS[m.roomType].th}</b> (${ROOMS[m.roomType].cost}G) — คลิกบนพื้นที่ว่าง`;
     if (m.type === 'move') t = m.roomId ? `เลือกตำแหน่งใหม่ของ <b>${ROOMS[this.g.dungeon.getRoom(m.roomId)?.type]?.th}</b>` : 'คลิกห้องที่ต้องการย้าย';
     if (m.type === 'corridor') t = m.erase ? 'ลากเพื่อลบทางเดิน' : `ลากเพื่อสร้างทางเดิน (${BALANCE.economy.corridorCost}G/ช่อง)`;
-    if (m.type === 'trap') t = `วาง <b>${TRAPS[m.trapType].name}</b> (${TRAPS[m.trapType].cost}G)`;
+    if (m.type === 'trap') t = m.moveId ? `ย้าย <b>${TRAPS[m.trapType].th}</b> — แตะตำแหน่งใหม่` : `วาง <b>${TRAPS[m.trapType].th}</b> (${fmt(TRAPS[m.trapType].price)}G)${TRAPS[m.trapType].place === 'wall' ? ' · ต้องชิดผนัง' : ''}`;
     const rot = m.type === 'room' || (m.type === 'move' && m.roomId) ? '<button class="btn sm" data-act="rotate">หมุน (R)</button>' : '';
     bar.innerHTML = `<span>${t}</span>${rot}<button class="btn sm red" data-act="cancelMode">เสร็จ</button>`;
     bar.classList.remove('hidden');
@@ -296,7 +301,7 @@ export class UI {
       <span class="stat" title="กำจัดผู้กล้า">⚔ ${fmt(s.stats.kills)}</span>
       <span class="stat" title="ชื่อเสียง: ${this.g.reputation.title()}">★ ${fmt(s.reputation)}</span>
       <span class="stat" title="Dungeon Core HP">Core <span class="corebar"><i style="transform:scaleX(${core.hp / core.maxHp})"></i></span> ${Math.ceil(core.hp)}</span>
-      <span class="stat daynight">${night ? '☾' : '☀'} วันที่ ${this.g.time.day} ${timeString(s.time)}${s.heroes.length ? ` · <span class="bad-t">ผู้กล้า ${s.heroes.length}</span>` : ''}</span>
+      <span class="stat daynight">${night ? '☾' : '☀'} วันที่ ${this.g.time.day} ${timeString(s.time)}${s.dayType && s.dayType.id !== 'normal' ? ` · <span class="${s.dayType.id === 'quiet' ? 'muted' : 'bad-t'}">${s.dayType.th}</span>` : ''}${s.heroes.length ? ` · <span class="bad-t">ผู้กล้า ${s.heroes.length}</span>` : ''}</span>
       <span class="speed" role="group" aria-label="ความเร็วเกม">
         ${[[0, '❚❚'], [1, '▶'], [2, '▶▶'], [4, '▶▶▶']].map(([v, l]) => `<button class="${sp === v ? 'on' : ''}" data-act="speed" data-v="${v}" title="${v ? `x${v}` : 'หยุด'}">${l}</button>`).join('')}
       </span>`;
@@ -347,12 +352,30 @@ export class UI {
 
   monIcon(species, cls = '') { const sp = speciesInfo(species); const u = spriteIcon(sp.sprite, 64) || spriteDataURL('slime', { a: '#4fc3ff' }); return `<img class="icon ${cls}" alt="" src="${u}">`; }
   heroIcon(cls, dir = 'down', extra = '') { const u = spriteIcon(`hero_${cls}_${dir}`, 64) || spriteDataURL('hero', { a: '#4a6ab8' }); return `<img class="icon ${extra}" alt="" src="${u}">`; }
-  itemIcon(it) {
-    const d = ITEMS[it.itemId];
-    const t = { weapon: 'weapon', armor: 'armor', helmet: 'helmet', shield: 'shield', ring: 'ring', necklace: 'necklace', potion: 'potion', material: 'material', crystal: 'crystal' }[d.type];
-    const col = { common: '#a8a8b8', uncommon: '#5ad86a', rare: '#4a98ff', epic: '#b85aff', legendary: '#f3a74a', mythic: '#ff5a8a' }[it.rarity] || '#a8a8b8';
-    const c2 = d.type === 'potion' ? (it.itemId === 'stamina_tonic' ? '#4ac8ff' : it.itemId === 'loyalty_treat' ? '#ffb84a' : '#e84a5a') : d.type === 'crystal' ? '#c86aff' : col;
-    return `<img class="icon px" alt="" src="${itemIconURL(t, c2)}">`;
+  itemIcon(it, cls = '') {
+    const id = typeof it === 'string' ? it : it.itemId;
+    const d = ITEMS[id];
+    const u = d && spriteIcon(d.icon, 64);
+    return `<img class="icon item-ic rb-${d?.rarity || 'common'} ${cls}" alt="" src="${u || itemIconURL('material', '#a8a8b8')}">`;
+  }
+  iconOf(key, cls = '') { const u = spriteIcon(key, 64); return u ? `<img class="icon item-ic ${cls}" alt="" src="${u}">` : '<div class="icon"></div>'; }
+  trapIcon(type, cls = '') {
+    const d = TRAPS[type]; const u = spriteIcon(d.icon, 64);
+    return u ? `<img class="icon item-ic rb-${d.rarity} ${cls}" alt="" src="${u}">` : `<div class="icon" style="background:${TYPE_COLOR[d.type]};border:2px solid #000"></div>`;
+  }
+  roomThumb(d, cls = '') {
+    const a = d.art?.[0]; if (!a) return `<div class="icon ${cls}" style="background:${d.color};border:2px solid #000"></div>`;
+    const src = (typeof window !== 'undefined' && window.__ASSETS__?.rooms?.[a]) || `assets/rooms/${a}.webp`;
+    return `<img class="icon item-ic room-th ${cls}" alt="" src="${src}">`;
+  }
+  iname(id) { return ITEMS[id]?.th || ITEMS[id]?.name || id; }
+  buffText(b) {
+    const L = { hp: 'Max HP', atk: 'ATK', def: 'DEF', matk: 'MATK', mp: 'MP', aspd: 'ATK Speed', lifesteal: 'Lifesteal', exp: 'EXP' };
+    return Object.entries(b).filter(([k]) => k !== 'healFull').map(([k, v]) => {
+      if (k.startsWith('dmg_')) return `ดาเมจ${ELEMENT_INFO[k.slice(4)]?.name || k.slice(4)} +${Math.round(v * 100)}%`;
+      if (k.startsWith('res_')) return `ต้านทาน${ELEMENT_INFO[k.slice(4)]?.name || k.slice(4)} +${Math.round(v * 100)}%`;
+      return `${L[k] || k} +${Math.round(v * 100)}%`;
+    }).join(' · ') + (b.healFull ? ' · ฟื้น HP เต็ม' : '');
   }
   assignLabel(m) {
     const a = m.assignment;
@@ -414,14 +437,14 @@ export class UI {
       const t = this.tabs('build', [['rooms', 'ห้อง'], ['tools', 'ทางเดิน/ย้าย'], ['traps', 'กับดัก'], ['list', 'ห้องทั้งหมด']]);
       let html = t.html;
       if (t.cur === 'rooms') {
-        html += '<p class="note">เลือกห้องแล้วคลิกบนแผนที่ ห้องต้องติดกับทางเดินหรือห้องอื่นที่เชื่อมกับทางเข้า จึงจะใช้งานได้</p><div class="list">';
+        html += '<p class="note">เลือกห้องแล้วคลิกบนแผนที่ ห้องต้องติดกับทางเดินหรือห้องอื่นที่เชื่อมกับทางเข้า จึงจะใช้งานได้ · <b>วางทับทางเดินได้เลย</b> (สร้างทางเดินไว้ก่อนแล้วค่อยวางห้องเชื่อม)</p><div class="list">';
         for (const [id, d] of Object.entries(ROOMS)) {
           if (!d.buildable && d.buildable !== undefined) continue;
           const locked = d.unlock > g.state.dungeonLevel;
           const owned = g.state.dungeon.rooms.filter((r) => r.type === id).length;
           const disabled = locked || g.state.gold < d.cost || (d.unique && owned);
           html += `<div class="item ${locked ? 'locked' : ''} ${this.mode?.roomType === id ? 'sel' : ''}" ${disabled ? '' : `data-act="placeRoom" data-id="${id}"`}>
-            <div class="icon" style="background:${d.color};border:2px solid #000"></div>
+            ${this.roomThumb(d)}
             <div class="grow"><div class="name">${d.th} <span class="muted">${d.size[0]}x${d.size[1]}</span> ${owned ? `<span class="muted">(มี ${owned})</span>` : ''}</div>
             <div class="sub">${esc(d.desc)}</div>
             <div class="sub">${locked ? `ปลดล็อกที่ Dungeon Lv.${d.unlock}` : `<span class="gold-t">${d.cost}G</span> · ค่าบำรุง ${d.upkeep}/วัน/ระดับ${d.unique ? ' · สร้างได้ 1 ห้อง' : ''}`}</div></div></div>`;
@@ -445,20 +468,28 @@ export class UI {
         const ws = g.dungeon.roomsOfType('trap_workshop')[0];
         if (!ws) html += `<p class="note">${g.state.dungeonLevel < 2 ? 'กับดักปลดล็อกที่ Dungeon Level 2 (ต้องสร้าง Trap Workshop)' : 'สร้าง Trap Workshop ในแท็บ "ห้อง" เพื่อผลิตกับดัก'}</p>`;
         else {
-          html += `<p class="note">กับดัก ${g.state.dungeon.traps.length}/${g.dungeon.maxTraps()} · วางบนทางเดินหรือในห้อง (ยกเว้นห้อง Core)</p><div class="list">`;
-          for (const [id, d] of Object.entries(TRAPS)) {
-            const locked = d.unlock > g.state.dungeonLevel;
-            html += `<div class="item ${locked ? 'locked' : ''} ${this.mode?.trapType === id ? 'sel' : ''}" ${locked ? '' : `data-act="placeTrap" data-id="${id}"`}>
-              <div class="icon" style="background:${d.color};border:2px solid #000"></div><div class="grow"><div class="name">${d.name}</div>
-              <div class="sub">${locked ? `ปลดล็อก Lv.${d.unlock}` : `<span class="gold-t">${d.cost}G</span> · ดาเมจ ${d.damage} · CD ${d.cooldown}s · ระยะ ${d.range} · ทนทาน ${d.durability}`}</div></div></div>`;
+          html += `<p class="note">กับดัก ${g.state.dungeon.traps.length}/${g.dungeon.maxTraps()} · กับดักพื้นวางบนทางเดิน/ในห้อง · กับดัก <b>ผนัง</b> ต้องวางชิดกำแพง · Common ปลดล็อก Lv.2 · Rare Lv.3 · Epic Lv.5 · Legendary Lv.7</p>`;
+          const PAT = { hit: 'เป้าเดียว', proj: 'ยิง', line: 'แนวตรง', aoe: 'วงกว้าง', field: 'พื้นที่ต่อเนื่อง', chain: 'กระโดด', room: 'ทั้งห้อง' };
+          for (const rar of ['common', 'rare', 'epic', 'legendary']) {
+            const list = Object.values(TRAPS).filter((d) => d.rarity === rar);
+            html += `<h3 class="r-${rar}">${rar.toUpperCase()} (${list.length})</h3><div class="list">`;
+            for (const d of list) {
+              const locked = d.unlock > g.state.dungeonLevel;
+              html += `<div class="item ${locked ? 'locked' : ''} ${this.mode?.trapType === d.id && !this.mode?.moveId ? 'sel' : ''}" ${locked ? '' : `data-act="placeTrap" data-id="${d.id}"`}>
+                ${this.trapIcon(d.id)}<div class="grow"><div class="name">${d.th} <span class="muted" style="font-size:12px">${d.name}</span></div>
+                <div class="sub">${locked ? `ปลดล็อก Dungeon Lv.${d.unlock}` : `<span class="gold-t">${fmt(d.price)}G</span> · <span style="color:${TYPE_COLOR[d.type]}">${d.dmg}${d.dps ? '/วิ' : ''} ${d.type}</span> · ${PAT[d.pattern]} · ระยะ ${d.range} · CD ${d.cd}s${d.place === 'wall' ? ' · <b>ผนัง</b>' : ''}`}</div>
+                ${!locked && d.lv5 ? `<div class="sub muted">Lv.5: ${esc(d.lv5)}</div>` : ''}</div></div>`;
+            }
+            html += '</div>';
           }
-          html += '</div>';
+          html += `<h3>คอมโบกับดัก</h3><div class="card" style="font-size:13px">${COMBOS.map((c) => `<div><b>${c.th}</b> — ${c.desc}</div>`).join('')}</div>`;
+          html += `<h3>มอนสเตอร์ร่วมห้อง</h3><div class="card" style="font-size:13px">${Object.entries(MONSTER_SYNERGY).map(([k, v]) => `<div>มอนสเตอร์${ELEMENT_INFO[k]?.name || (k === 'demon' ? 'ปีศาจ' : k)} → ${v}</div>`).join('')}</div>`;
         }
       } else {
         html += '<div class="list">';
         for (const r of g.state.dungeon.rooms) {
           const d = ROOMS[r.type];
-          html += `<div class="item" data-act="selRoom" data-id="${r.id}"><div class="icon" style="background:${d.color};border:2px solid #000"></div>
+          html += `<div class="item" data-act="selRoom" data-id="${r.id}">${this.roomThumb(d)}
             <div class="grow"><div class="name">${d.th} Lv.${r.level}</div><div class="sub">${r.status === 'active' ? 'ใช้งานได้' : '<span class="bad-t">ไม่เชื่อมต่อ</span>'}${g.cleaning.isDirty(r) ? ' · <span class="bad-t">สกปรก</span>' : ''}</div></div></div>`;
         }
         html += '</div>';
@@ -491,50 +522,84 @@ export class UI {
 
     inventory() {
       const g = this.g, inv = g.inventory;
-      const t = this.tabs('inventory', [['items', `ไอเทม ${inv.usedSlots()}/${inv.capacity()}`], ['craft', 'คราฟต์'], ['shop', 'ร้านค้า Merchant']]);
+      const t = this.tabs('inventory', [['items', `คลัง ${inv.usedSlots()}/${inv.capacity()}`], ['stations', `แปรรูป${inv.jobs.length ? ` (${inv.jobs.length})` : ''}`], ['kitchen', 'ครัว'], ['shop', 'ร้านค้า']]);
       let html = t.html;
+      const mons = () => g.state.monsters.map((m) => `<option value="${m.id}">${esc(m.name)} (Lv.${m.level})${m.foodBuff ? ' 🍖' : ''}</option>`).join('');
       if (t.cur === 'items') {
-        html += `<div class="row wrap" style="margin-bottom:8px"><span class="muted">เรียงตาม</span>
-          <button class="btn sm" data-act="sort" data-v="type">ประเภท</button><button class="btn sm" data-act="sort" data-v="rarity">ความหายาก</button><button class="btn sm" data-act="sort" data-v="price">ราคา</button></div>`;
+        const cat = this.invTab || 'all';
+        html += `<div class="row wrap chips" style="margin-bottom:6px">${INV_TABS.map(([k, l]) => `<button class="btn sm ${cat === k ? 'on' : ''}" data-act="invTab" data-v="${k}">${l}</button>`).join('')}</div>`;
+        html += `<div class="row wrap" style="margin-bottom:8px"><span class="muted">เรียง</span>
+          <button class="btn sm" data-act="sort" data-v="type">ประเภท</button><button class="btn sm" data-act="sort" data-v="rarity">ความหายาก</button><button class="btn sm" data-act="sort" data-v="price">ราคา</button><button class="btn sm" data-act="sort" data-v="qty">จำนวน</button>
+          <span class="grow"></span><button class="btn sm gold" data-act="sellCommon">ขาย Common ทั้งหมด</button></div>`;
         html += '<div class="inv-grid">';
-        for (const it of inv.items) {
-          html += `<div class="slot ${this.invSel === it.uid ? 'sel' : ''}" data-act="invSel" data-id="${it.uid}" title="${esc(ITEMS[it.itemId].name)}">${this.itemIcon(it)}${it.qty > 1 ? `<span class="q">${it.qty}</span>` : ''}${it.plus ? `<span class="pl">+${it.plus}</span>` : ''}</div>`;
+        const shown = inv.items.filter((it) => cat === 'all' || ITEMS[it.itemId].cat === cat);
+        for (const it of shown) {
+          html += `<div class="slot rb-${ITEMS[it.itemId].rarity} ${this.invSel === it.uid ? 'sel' : ''}" data-act="invSel" data-id="${it.uid}" title="${esc(this.iname(it.itemId))}">${this.itemIcon(it)}${it.qty > 1 ? `<span class="q">${it.qty}</span>` : ''}${it.plus ? `<span class="pl">+${it.plus}</span>` : ''}${it.locked ? '<span class="lk">🔒</span>' : ''}</div>`;
         }
-        for (let i = inv.usedSlots(); i < inv.capacity(); i++) html += '<div class="slot empty"></div>';
+        if (cat === 'all') for (let i = inv.usedSlots(); i < inv.capacity(); i++) html += '<div class="slot empty"></div>';
         html += '</div>';
         const it = inv.get(this.invSel);
         if (it) {
           const d = ITEMS[it.itemId];
           const st = inv.itemStats(it);
-          const mons = g.state.monsters.map((m) => `<option value="${m.id}">${esc(m.name)} (Lv.${m.level})</option>`).join('');
-          html += `<div class="card" style="margin-top:10px"><div class="row">${this.itemIcon(it)}<div class="grow"><div class="name r-${it.rarity}">${d.name}${it.plus ? ` +${it.plus}` : ''}</div><div class="sub">${d.type} · ${it.rarity}${it.qty > 1 ? ` · x${it.qty}` : ''}</div></div></div>
+          const u = d.use;
+          const fr = d.feed ? RECIPES[d.feed] : null;
+          const pc = d.proc ? inv.canProcess(it.uid) : null;
+          html += `<div class="card item-card" style="margin-top:10px"><div class="row">${this.itemIcon(it, 'lg')}<div class="grow"><div class="name r-${d.rarity}">${d.th}${it.plus ? ` +${it.plus}` : ''}</div>
+              <div class="sub">${d.name} · ${d.code} · <span class="r-${d.rarity}">${d.rarity}</span> · ${d.type}${it.qty > 1 ? ` · x${it.qty}` : ''}</div></div></div>
             ${Object.keys(st).length ? `<div class="sub">${Object.entries(st).map(([k, v]) => `${k.toUpperCase()} +${k === 'crit' ? `${Math.round(v * 100)}%` : v}`).join(' · ')}</div>` : ''}
-            ${d.use ? `<div class="sub">${d.use.heal ? `ฟื้น HP ${d.use.heal * 100}%` : ''}${d.use.fatigue ? ` Fatigue ${d.use.fatigue}` : ''}${d.use.loyalty ? ` Loyalty +${d.use.loyalty}` : ''}</div>` : ''}
+            ${u ? `<div class="sub good-t">${[u.gold ? `เปิดได้ ${u.gold[0]}-${u.gold[1]}G` : '', u.heal ? `ฟื้น HP ${Math.round(u.heal * 100)}%` : '', u.mp ? 'ฟื้น MP เต็ม' : '', u.fatigue ? `Fatigue ${u.fatigue}` : '', u.loyalty ? `Loyalty +${u.loyalty}` : '', u.hunger ? `ความหิว ${u.hunger}` : '', u.cure ? 'ล้างสถานะผิดปกติ' : ''].filter(Boolean).join(' · ')}</div>` : ''}
+            ${fr ? `<div class="sub good-t">บัฟอาหาร: ${this.buffText(fr.buff)} · ${Math.round(fr.hours)} ชม.เกม (1 บัฟ/ตัว)</div>` : ''}
+            ${d.proc ? `<div class="sub">แปรรูปที่ <b>${STATIONS[d.proc.st].th}</b>${d.procIn > 1 ? ` (ใช้ ${d.procIn} ชิ้น)` : ''} → ${Object.entries(d.proc.out).map(([k, q]) => `${this.itemIcon(k, 'xs')}${this.iname(k)} x${q}`).join(', ')}${d.proc.gold ? ` · ${d.proc.gold}G` : ''}</div>` : ''}
             <div class="row wrap" style="margin-top:8px">
-              ${d.slot || d.use ? `<select id="invTarget" aria-label="เลือกมอนสเตอร์">${mons}</select>` : ''}
+              ${d.slot || (u && !u.gold) || fr ? `<select id="invTarget" aria-label="เลือกมอนสเตอร์">${mons()}</select>` : ''}
               ${d.slot ? '<button class="btn sm" data-act="invEquip">สวมใส่</button>' : ''}
-              ${d.use ? '<button class="btn sm" data-act="invUse">ใช้</button>' : ''}
-              ${d.stats ? `<button class="btn sm" data-act="invUpgrade" ${it.plus >= BALANCE.loot.itemUpgradeMax ? 'disabled' : ''}>อัปเกรด (${inv.upgradeCost(it)}G)</button>` : ''}
-              <button class="btn sm gold" data-act="invSell">ขาย ${inv.sellPrice(it)}G${it.qty > 1 ? ' /ชิ้น' : ''}</button>
-              ${it.qty > 1 ? `<button class="btn sm" data-act="invSellAll">ขายทั้งหมด ${inv.sellPrice(it) * it.qty}G</button>` : ''}
-            </div></div>`;
-        } else html += '<p class="note">เลือกไอเทมเพื่อสวมใส่ ใช้ อัปเกรด หรือขาย · Loot ถูกนำเข้าคลังโดยทีมทำความสะอาด</p>';
-      } else if (t.cur === 'craft') {
-        html += '<div class="list">';
-        for (const r of RECIPES) {
-          const c = inv.canCraft(r);
-          const d = ITEMS[r.result];
-          html += `<div class="item" style="cursor:default">${this.itemIcon({ itemId: r.result, rarity: 'common' })}<div class="grow"><div class="name">${d.name}</div>
-            <div class="sub">${Object.entries(r.materials).map(([k, q]) => `<span class="${inv.count(k) >= q ? 'good-t' : 'bad-t'}">${ITEMS[k].name} ${inv.count(k)}/${q}</span>`).join(' · ')} · ${r.gold}G</div></div>
-            <button class="btn sm" data-act="craft" data-id="${r.id}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason || '')}">คราฟต์</button></div>`;
+              ${u ? `<button class="btn sm" data-act="invUse">${u.gold ? 'เปิด' : 'ใช้'}</button>` : ''}
+              ${fr ? '<button class="btn sm" data-act="invUse">ป้อนอาหาร</button>' : ''}
+              ${d.proc ? `<button class="btn sm" data-act="invProcess" ${pc.ok ? '' : 'disabled'} title="${esc(pc.reason || '')}">แปรรูป</button>` : ''}
+              ${d.stats ? `<button class="btn sm" data-act="invUpgrade" ${it.plus >= BALANCE.loot.itemUpgradeMax ? 'disabled' : ''} title="ใช้แท่งเหล็กกล้า x${1 + (it.plus || 0)}">อัปเกรด (${inv.upgradeCost(it)}G)</button>` : ''}
+            </div><div class="row wrap" style="margin-top:6px">
+              <button class="btn sm ${it.locked ? 'on' : ''}" data-act="invLock">${it.locked ? '🔒 ปลดล็อก' : 'ล็อก'}</button>
+              <button class="btn sm gold" data-act="invSell" ${it.locked ? 'disabled' : ''}>ขาย ${inv.sellPrice(it)}G${it.qty > 1 ? ' /ชิ้น' : ''}</button>
+              ${it.qty > 1 ? `<button class="btn sm" data-act="invSellAll" ${it.locked ? 'disabled' : ''}>ขายทั้งหมด ${fmt(inv.sellPrice(it) * it.qty)}G</button>` : ''}
+            </div>${pc && !pc.ok ? `<p class="note">${esc(pc.reason)}</p>` : ''}</div>`;
+        } else html += '<p class="note">แตะไอเทมเพื่อดูรายละเอียด สวมใส่ ใช้ แปรรูป หรือขาย · Loot ที่ผู้กล้าทิ้งไว้ ทีมทำความสะอาดจะนำเข้าคลัง · ล็อกไอเทมสำคัญไว้กันขายพลาด</p>';
+      } else if (t.cur === 'stations') {
+        html += '<p class="note">สร้างสถานีเพื่อแปรรูป Loot เป็นวัตถุดิบ/ของมีค่า · เลือกไอเทมในคลังแล้วกด "แปรรูป" · ระดับสถานี = จำนวนงานพร้อมกัน</p><div class="list">';
+        for (const [k, s] of Object.entries(STATIONS)) {
+          const lvl = inv.st[k]?.level || 0, locked = s.unlock > g.state.dungeonLevel, cost = inv.stationCost(k);
+          html += `<div class="item" style="cursor:default">${this.iconOf(s.icon)}<div class="grow"><div class="name">${s.th} ${lvl ? `<span class="gold-t">Lv.${lvl}</span>` : ''}</div>
+            <div class="sub">${s.desc}${lvl ? ` · งาน ${inv.busy(k)}/${inv.stationSlots(k)}` : ''}</div></div>
+            ${locked ? `<span class="muted">Lv.${s.unlock}</span>` : lvl >= 3 ? '<span class="muted">MAX</span>' : `<button class="btn sm gold" data-act="buildStation" data-id="${k}" ${g.state.gold >= cost ? '' : 'disabled'}>${lvl ? 'อัปเกรด' : 'สร้าง'} ${fmt(cost)}G</button>`}</div>`;
+        }
+        html += '</div>';
+        if (inv.jobs.length) {
+          html += '<h3>งานที่กำลังทำ</h3><div class="list">';
+          for (const j of inv.jobs) {
+            const [k0] = Object.keys(j.out);
+            html += `<div class="item" style="cursor:default">${this.itemIcon(k0)}<div class="grow"><div class="name">${STATIONS[j.st].th} → ${Object.entries(j.out).map(([k, q]) => `${this.iname(k)} x${q}`).join(', ')}</div>
+              <div class="bar exp"><i style="width:${pct(g.state.time - j.start, j.end - j.start)}%"></i></div><div class="sub">เหลือ ${Math.max(0, Math.ceil((j.end - g.state.time) / 6) / 10)} ชม.เกม${j.warned ? ' · <span class="bad-t">คลังเต็ม</span>' : ''}</div></div></div>`;
+          }
+          html += '</div>';
+        }
+      } else if (t.cur === 'kitchen') {
+        if (!inv.st.kitchen) html += '<p class="note">ต้องสร้าง <b>ครัวมอนสเตอร์</b> ในแท็บ "แปรรูป" ก่อน (500G)</p>';
+        html += '<p class="note">อาหารให้บัฟชั่วคราว มอนสเตอร์ 1 ตัวมีบัฟอาหารได้ 1 อย่าง (มื้อใหม่แทนที่มื้อเก่า) · อาหารที่ปรุงเสร็จเข้าคลัง แล้วกด "ป้อนอาหาร"</p><div class="list">';
+        for (const [rid, r] of Object.entries(RECIPES)) {
+          const c = inv.canCook(rid);
+          const have = inv.count(rid);
+          html += `<div class="item" style="cursor:default">${this.itemIcon(rid)}<div class="grow"><div class="name r-${r.rarity}">${r.th} ${have ? `<span class="muted">(มี ${have})</span>` : ''}</div>
+            <div class="sub good-t">${this.buffText(r.buff)} · ${Math.round(r.hours)} ชม.</div>
+            <div class="sub ingr">${Object.entries(r.ingredients).map(([k, q]) => `<span class="${inv.count(k) >= q ? 'good-t' : 'bad-t'}">${this.itemIcon(k, 'xs')}${this.iname(k)} ${inv.count(k)}/${q}</span>`).join(' ')}</div></div>
+            <button class="btn sm" data-act="cook" data-id="${rid}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason || '')}">ปรุง</button></div>`;
         }
         html += '</div>';
       } else {
         html += `<p class="note">${g.state.shopDiscountDays > 0 ? '<span class="good-t">พ่อค้าเร่ลดราคา 25% วันนี้!</span>' : 'สินค้าเพิ่มขึ้นตาม Dungeon Level · ชื่อเสียงสูงได้ส่วนลด'}</p><div class="list">`;
         for (const s of g.economy.shopItems()) {
           const d = ITEMS[s.item];
-          html += `<div class="item" style="cursor:default">${this.itemIcon({ itemId: s.item, rarity: 'common' })}<div class="grow"><div class="name">${d.name}</div><div class="sub">${d.type}${d.stats ? ` · ${Object.entries(d.stats).map(([k, v]) => `${k.toUpperCase()}+${v}`).join(' ')}` : ''}</div></div>
-            <button class="btn sm gold" data-act="buy" data-id="${s.item}" ${g.state.gold >= s.price ? '' : 'disabled'}>${s.price}G</button></div>`;
+          html += `<div class="item" style="cursor:default">${this.itemIcon(s.item)}<div class="grow"><div class="name r-${d.rarity}">${d.th}</div><div class="sub">${d.name} · ${d.type}${d.stats ? ` · ${Object.entries(d.stats).map(([k, v]) => `${k.toUpperCase()}+${v}`).join(' ')}` : ''}${d.use?.heal ? ` · ฟื้น HP ${Math.round(d.use.heal * 100)}%` : ''}</div></div>
+            <button class="btn sm gold" data-act="buy" data-id="${s.item}" ${g.state.gold >= s.price ? '' : 'disabled'}>${fmt(s.price)}G</button></div>`;
         }
         html += '</div>';
       }
@@ -591,8 +656,8 @@ export class UI {
       if (s.dungeon.traps.length) {
         html += '<h3>กับดัก</h3><div class="list">';
         for (const t of s.dungeon.traps) {
-          const d = TRAPS[t.type], max = d.durability + (t.level - 1) * 10;
-          html += `<div class="item" data-act="selTrap" data-id="${t.id}"><div class="grow"><div class="name">${d.name} Lv.${t.level}</div><div class="sub">ทนทาน ${t.durability}/${max} ${t.durability <= 0 ? '<span class="bad-t">พัง</span>' : ''}</div></div></div>`;
+          const d = TRAPS[t.type], max = g.traps.maxDurability(t);
+          html += `<div class="item" data-act="selTrap" data-id="${t.id}">${this.trapIcon(t.type)}<div class="grow"><div class="name">${d.th} Lv.${t.level}</div><div class="sub">ทนทาน ${t.durability}/${max} ${t.durability <= 0 ? '<span class="bad-t">พัง</span>' : ''}</div></div></div>`;
         }
         html += '</div>';
       }
@@ -752,8 +817,8 @@ export class UI {
       const it = m.equipment[slot] ? g.state.equipped[m.equipment[slot]] : null;
       const cands = g.inventory.items.filter((i) => ITEMS[i.itemId].slot === slot);
       return `<div class="row" style="margin:3px 0"><span class="muted" style="width:62px">${{ weapon: 'อาวุธ', armor: 'เกราะ', accessory: 'เครื่องประดับ' }[slot]}</span>
-        ${it ? `<span class="grow r-${it.rarity}">${ITEMS[it.itemId].name}${it.plus ? ` +${it.plus}` : ''}</span><button class="btn sm" data-act="unequip" data-id="${m.id}" data-v="${slot}">ถอด</button>`
-        : cands.length ? `<select class="grow" data-change="equip" data-id="${m.id}" aria-label="สวมใส่"><option value="">— เลือก —</option>${cands.map((c) => `<option value="${c.uid}">${ITEMS[c.itemId].name}${c.plus ? ` +${c.plus}` : ''} (${c.rarity})</option>`).join('')}</select>` : '<span class="muted grow">ว่าง</span>'}</div>`;
+        ${it ? `<span class="grow r-${ITEMS[it.itemId].rarity}">${this.itemIcon(it, 'xs')}${this.iname(it.itemId)}${it.plus ? ` +${it.plus}` : ''}</span><button class="btn sm" data-act="unequip" data-id="${m.id}" data-v="${slot}">ถอด</button>`
+        : cands.length ? `<select class="grow" data-change="equip" data-id="${m.id}" aria-label="สวมใส่"><option value="">— เลือก —</option>${cands.map((c) => `<option value="${c.uid}">${this.iname(c.itemId)}${c.plus ? ` +${c.plus}` : ''} (${ITEMS[c.itemId].rarity})</option>`).join('')}</select>` : '<span class="muted grow">ว่าง</span>'}</div>`;
     }).join('');
     const evos = g.monsters.evolutionOptions(m).map((id) => {
       const ch = g.monsters.evolutionCheck(m, id);
@@ -761,7 +826,8 @@ export class UI {
         ${ch.reqs.map((r) => `<div class="req"><span class="${r.met ? 'ok' : 'no'}">${r.met ? '✔' : '✘'}</span>${esc(r.label)}</div>`).join('')}</div></div>
         <button class="btn sm gold" data-act="evolve" data-id="${m.id}" data-v="${id}" ${ch.ok ? '' : 'disabled'}>วิวัฒนาการ</button></div>`;
     }).join('');
-    const pot = g.inventory.items.filter((i) => ITEMS[i.itemId].use);
+    const pot = g.inventory.items.filter((i) => (ITEMS[i.itemId].use && !ITEMS[i.itemId].use.gold) || ITEMS[i.itemId].feed);
+    const fb = m.foodBuff ? RECIPES[m.foodBuff.id] : null;
     return `<div class="row">${this.monIcon(m.species, 'lg')}<div class="grow"><h2>${esc(m.name)}</h2>
       <div class="sub">${sp.name} · <span class="r-${sp.rarity}">${sp.rarity}</span> · ${ROLE_TH[sp.role]} · ธาตุ${ELEMENT_INFO[sp.element].name} · ${sp.isBoss ? BOSS_TIERS[sp.tier].name : tierOf(m.level).name}</div>
       <div class="sub">Lv.${m.level} · ${m.ko ? '<span class="bad-t">หมดสติ</span>' : AI_TH[m.ai] || m.ai} · กำจัด ${m.kills}</div></div></div>
@@ -776,6 +842,7 @@ export class UI {
         ${m.mutations?.length ? `<dt>Mutation</dt><dd class="gold-t">${m.mutations.map((k) => `${MUTATIONS[k].th} (${MUTATIONS[k].name})`).join(', ')}</dd>` : ''}
         <dt>บุคลิก</dt><dd>${tr.th} — ${tr.desc}</dd><dt>สกิล</dt><dd>${skills}</dd><dt>Passive</dt><dd>${pas ? `${pas.name}: ${pas.desc}` : `ปลดล็อก Lv.${BALANCE.monsters.passiveUnlockLevel}`}</dd>
         <dt>Skill Mastery</dt><dd>${(m.skillMastery || 0).toFixed(1)}/${BALANCE.training.skillMasteryMax}</dd>
+        ${fb ? `<dt>บัฟอาหาร</dt><dd class="good-t">${fb.th}: ${this.buffText(m.foodBuff.buff)} (เหลือ ${Math.max(0, Math.round((m.foodBuff.until - g.state.time) / 60))} ชม.)</dd>` : ''}
         ${m.status?.length ? `<dt>สถานะ</dt><dd>${m.status.map((x) => STATUS_INFO[x.id]?.name || x.id).join(', ')}</dd>` : ''}</dl>
       <h3>หน้าที่</h3><select data-change="assign" data-id="${m.id}" style="width:100%" aria-label="หน้าที่">${assignOpts}</select>
       <div class="row" style="margin-top:6px"><span class="muted">ตำแหน่ง</span>
@@ -783,7 +850,7 @@ export class UI {
         <button class="btn sm ${m.row === 'back' ? 'on' : ''}" data-act="row" data-id="${m.id}" data-v="back">แถวหลัง</button></div>
       <p class="note">แถวหน้ารับ Aggro ของผู้กล้า แถวหลังรับดาเมจน้อยลง 20% และยืนห่างจากทางเข้า</p>
       <h3>อุปกรณ์</h3>${eq}
-      ${pot.length ? `<h3>ใช้ไอเทม</h3><div class="row wrap">${pot.map((p) => `<button class="btn sm" data-act="useOn" data-id="${m.id}" data-v="${p.uid}">${ITEMS[p.itemId].name} x${p.qty}</button>`).join('')}</div>` : ''}
+      ${pot.length ? `<h3>ใช้ไอเทม</h3><div class="row wrap">${pot.map((p) => `<button class="btn sm" data-act="useOn" data-id="${m.id}" data-v="${p.uid}">${this.itemIcon(p, 'xs')}${this.iname(p.itemId)} x${p.qty}</button>`).join('')}</div>` : ''}
       ${evos ? `<h3>วิวัฒนาการ</h3>${evos}` : ''}
       <div class="row wrap" style="margin-top:12px"><button class="btn sm" data-act="rename" data-id="${m.id}">เปลี่ยนชื่อ</button>
         <button class="btn sm ${m.locked ? 'on' : ''}" data-act="lock" data-id="${m.id}">${m.locked ? 'ปลดล็อก' : 'ล็อก (กันผสม/ปลด)'}</button>
@@ -828,18 +895,25 @@ export class UI {
 
   trapDetail(t) {
     if (!t) return '';
-    const g = this.g, d = TRAPS[t.type], max = d.durability + (t.level - 1) * 10;
-    return `<h2>${d.name} Lv.${t.level}</h2><dl class="kv"><dt>ดาเมจ</dt><dd>${Math.round(d.damage * Math.pow(BALANCE.traps.upgradeDamageMult, t.level - 1))}</dd><dt>คูลดาวน์</dt><dd>${d.cooldown}s</dd><dt>ธาตุ</dt><dd>${ELEMENT_INFO[d.element].name}</dd><dt>ความทนทาน</dt><dd>${t.durability}/${max}</dd><dt>ค่าบำรุง</dt><dd>${d.upkeep}/วัน</dd></dl>
-      <div class="row wrap" style="margin-top:8px"><button class="btn sm" data-act="trapRepair" data-id="${t.id}" ${t.durability >= max ? 'disabled' : ''}>ซ่อม</button>
-      <button class="btn sm gold" data-act="trapUpgrade" data-id="${t.id}" ${t.level >= 5 ? 'disabled' : ''}>อัปเกรด (${g.dungeon.trapUpgradeCost(t)}G)</button>
-      <button class="btn sm red" data-act="trapRemove" data-id="${t.id}">รื้อ</button></div>`;
+    const g = this.g, d = TRAPS[t.type], max = g.traps.maxDurability(t), L = TRAP_LEVELS[t.level - 1];
+    const nx = TRAP_LEVELS[t.level];
+    const cap = g.dungeon.roomsOfType('trap_workshop')[0]?.level || 1;
+    return `<div class="row">${this.trapIcon(t.type, 'lg')}<div class="grow"><h2>${d.th} Lv.${t.level}</h2><div class="sub">${d.name} · ${d.code} · <span class="r-${d.rarity}">${d.rarity}</span>${d.place === 'wall' ? ' · ติดผนัง' : ''}</div></div></div>
+      <dl class="kv"><dt>ดาเมจ</dt><dd style="color:${TYPE_COLOR[d.type]}">${Math.round(g.traps.baseDamage(t))}${d.dps ? '/วินาที' : ''} (${d.type})${nx ? ` <span class="muted">→ Lv.${t.level + 1} x${nx.dmg}</span>` : ''}</dd>
+        <dt>คูลดาวน์</dt><dd>${(d.cd * (L.cd || 1)).toFixed(1)}s</dd><dt>ระยะ</dt><dd>${(d.range * (L.range || 1)).toFixed(1)}</dd>
+        <dt>ความทนทาน</dt><dd>${t.durability}/${max} ${t.durability <= 0 ? '<span class="bad-t">พัง</span>' : ''}</dd><dt>ค่าบำรุง</dt><dd>${d.upkeep}G/วัน</dd>
+        ${d.lv5 ? `<dt>Lv.5</dt><dd>${esc(d.lv5)}</dd>` : ''}</dl>
+      <div class="row wrap" style="margin-top:8px"><button class="btn sm" data-act="trapRepair" data-id="${t.id}" ${t.durability >= max ? 'disabled' : ''}>ซ่อม (${g.dungeon.trapRepairCost(t)}G)</button>
+      <button class="btn sm gold" data-act="trapUpgrade" data-id="${t.id}" ${t.level >= 5 || t.level >= cap ? 'disabled' : ''} title="ระดับสูงสุด = ระดับ Trap Workshop">อัปเกรด (${fmt(g.dungeon.trapUpgradeCost(t))}G)</button>
+      <button class="btn sm" data-act="trapMove" data-id="${t.id}">ย้าย</button>
+      <button class="btn sm red" data-act="trapRemove" data-id="${t.id}">ขาย (${g.dungeon.trapSellValue(t)}G)</button></div>`;
   }
 
   floorDetail(f) {
     if (!f) return '';
     const label = { corpse: 'ศพผู้กล้า', blood: 'คราบเลือด', loot: 'Loot', debris: 'เศษหิน' }[f.type];
     const cleaners = this.g.cleaning.cleaners().length;
-    return `<h2>${label}</h2>${f.type === 'loot' ? `<p>${(f.items || []).map((i) => `<span class="r-${i.rarity}">${ITEMS[i.itemId].name} x${i.qty}</span>`).join(', ') || '-'} ${f.gold ? `<span class="gold-t">${f.gold}G</span>` : ''}</p>` : ''}
+    return `<h2>${label}</h2>${f.type === 'loot' ? `<p>${(f.items || []).map((i) => `<span class="r-${ITEMS[i.itemId]?.rarity}">${this.itemIcon(i.itemId, 'xs')}${this.iname(i.itemId)} x${i.qty}</span>`).join(', ') || '-'} ${f.gold ? `<span class="gold-t">${f.gold}G</span>` : ''}</p>` : ''}
       <p class="note">${f.claimedBy ? 'มีมอนสเตอร์กำลังมาเก็บ' : cleaners ? 'รอคิวทีมทำความสะอาด' : 'ไม่มีมอนสเตอร์ทำความสะอาด! ตั้งหน้าที่ "ทำความสะอาด" ให้มอนสเตอร์อย่างน้อย 1 ตัว'}</p>`;
   }
 
@@ -944,6 +1018,7 @@ export class UI {
     },
     trapRepair(d) { const r = this.g.dungeon.repairTrap(d.id); if (!r.ok) this.flash(r.reason); },
     trapUpgrade(d) { const r = this.g.dungeon.upgradeTrap(d.id); if (!r.ok) this.flash(r.reason); },
+    trapMove(d) { const t = this.g.state.dungeon.traps.find((x) => x.id === d.id); if (t) { this.select(null); this.setMode({ type: 'trap', trapType: t.type, moveId: t.id }); } },
     trapRemove(d) { const r = this.g.dungeon.removeTrap(d.id); if (!r.ok) this.flash(r.reason); else this.select(null); },
     startTrain(d) {
       const m = this.g.monsters.get(d.id); const type = $(`#tr-${d.id}`)?.value || 'atk';
@@ -994,12 +1069,27 @@ export class UI {
     },
     invSel(d) { this.invSel = this.invSel === d.id ? null : d.id; },
     invEquip() { const m = this.g.monsters.get($('#invTarget')?.value); if (!m) return this.flash('เลือกมอนสเตอร์'); const r = this.g.inventory.equip(m, this.invSel); if (!r.ok) this.flash(r.reason); else this.invSel = null; },
-    invUse() { const m = this.g.monsters.get($('#invTarget')?.value); const r = this.g.inventory.use(this.invSel, m); if (!r.ok) this.flash(r.reason); },
-    invUpgrade() { const r = this.g.inventory.upgrade(this.invSel); if (!r.ok) this.flash(r.reason); },
-    invSell() { const r = this.g.inventory.sell(this.invSel, 1); if (r.ok) this.g.audio?.play('coin'); if (!this.g.inventory.get(this.invSel)) this.invSel = null; },
-    invSellAll() { const r = this.g.inventory.sell(this.invSel); if (r.ok) this.g.audio?.play('coin'); this.invSel = null; },
+    invUse() { const m = this.g.monsters.get($('#invTarget')?.value); const r = this.g.inventory.use(this.invSel, m); if (!r.ok) this.flash(r.reason); else { if (r.gold) this.flash(`ได้ ${r.gold} Gold`); if (!this.g.inventory.get(this.invSel)) this.invSel = null; } },
+    invUpgrade() { const r = this.g.inventory.upgrade(this.invSel); if (!r.ok) this.flash(r.reason); else this.invSel = r.uid; },
+    invLock() { this.g.inventory.toggleLock(this.invSel); },
+    invTab(d) { this.invTab = d.v; this.invSel = null; },
+    invProcess() { const r = this.g.inventory.process(this.invSel); if (!r.ok) this.flash(r.reason); else { this.g.audio?.play('build'); if (!this.g.inventory.get(this.invSel)) this.invSel = null; } },
+    async invSell(d, _el, all = false) {
+      const inv = this.g.inventory, it = inv.get(this.invSel); if (!it) return;
+      if (['legendary', 'mythic'].includes(inv.rarityOf(it)) && !(await this.confirm('ขายไอเทมหายาก', `ขาย ${this.iname(it.itemId)} (${inv.rarityOf(it)})? ไม่สามารถย้อนกลับได้`, 'ขาย', true))) return;
+      const r = inv.sell(this.invSel, all ? null : 1); if (r.ok) this.g.audio?.play('coin'); else this.flash(r.reason);
+      if (!inv.get(this.invSel)) this.invSel = null;
+      this.refresh(true);
+    },
+    invSellAll(d) { return this.actions.invSell.call(this, d, null, true); },
+    async sellCommon() {
+      if (!(await this.confirm('ขาย Common ทั้งหมด', 'ขายไอเทม Common ที่ไม่ได้ล็อกทั้งหมด?', 'ขาย'))) return;
+      const r = this.g.inventory.sellAllCommon(); if (!r.ok) this.flash(r.reason); else { this.g.audio?.play('coin'); this.flash(`ขาย ${r.count} รายการ ได้ ${fmt(r.gold)} Gold`); }
+      this.invSel = null; this.refresh(true);
+    },
     sort(d) { this.g.inventory.sort(d.v); },
-    craft(d) { const r = this.g.inventory.craft(d.id); if (!r.ok) this.flash(r.reason); },
+    cook(d) { const r = this.g.inventory.cook(d.id); if (!r.ok) this.flash(r.reason); else { this.g.audio?.play('build'); this.flash('เริ่มปรุงอาหาร'); } },
+    buildStation(d) { const r = this.g.inventory.buildStation(d.id); if (!r.ok) this.flash(r.reason); else this.g.audio?.play('build'); },
     buy(d) { const r = this.g.economy.buyItem(d.id); if (!r.ok) this.flash(r.reason); else this.g.audio?.play('coin'); },
     buyFood(d) { const r = this.g.economy.buyFood(+d.v); if (!r.ok) this.flash(r.reason); },
     rankUp() { const r = this.g.progression.rankUp(); if (!r.ok) this.flash(r.reason); },

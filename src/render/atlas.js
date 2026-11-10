@@ -15,9 +15,9 @@ function loadImage(src) {
 export async function loadAssets() {
   if (typeof window === 'undefined') return false;
   try {
-    state.map = A?.atlas || await fetch('assets/sprites/atlas.json').then((r) => r.json());
+    state.map = A?.atlas || { ...(await fetch('assets/sprites/atlas.json').then((r) => r.json())), ...(await fetch('assets/items/atlas.json').then((r) => r.json())) };
     const names = [...new Set(Object.values(state.map).map((v) => v[0]))];
-    const imgs = await Promise.all(names.map((n) => loadImage(A?.sheets?.[n] || `assets/sprites/${n}.webp`)));
+    const imgs = await Promise.all(names.map((n) => loadImage(A?.sheets?.[n] || (n === 'items' ? 'assets/items/items.webp' : n === 'traps' ? 'assets/traps/traps.webp' : `assets/sprites/${n}.webp`))));
     names.forEach((n, i) => { if (imgs[i]) state.sheets[n] = imgs[i]; });
     state.ready = true;
     for (const fn of state.listeners) fn();

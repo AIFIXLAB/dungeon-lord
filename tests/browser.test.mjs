@@ -37,13 +37,13 @@ check('recruit via UI', st1.n === 4 && st1.gold === 455 && st1.name === 'Pip', J
 // สร้าง Storage Room ผ่านโหมดวางห้องบนแผนที่
 await page.click('#mb-build');
 await page.click('[data-act="placeRoom"][data-id="storage_room"]');
-const pos = await page.evaluate(() => { const p = __app.renderer.worldToScreen(7.5, 17.5); const b = document.querySelector('#map').getBoundingClientRect(); return { x: p.x + b.left, y: p.y + b.top }; });
+const pos = await page.evaluate(() => { const p = __app.renderer.worldToScreen(10.5, 28.5); const b = document.querySelector('#map').getBoundingClientRect(); return { x: p.x + b.left, y: p.y + b.top }; });
 await page.mouse.move(pos.x, pos.y);
 await page.waitForTimeout(100);
 await page.mouse.click(pos.x, pos.y);
 await page.waitForTimeout(300);
 const rooms = await page.evaluate(() => __app.game.state.dungeon.rooms.map((r) => `${r.type}@${r.x},${r.y}:${r.status}`));
-check('room placed by click', rooms.some((r) => r.startsWith('storage_room@7,17')), rooms.join(' '));
+check('room placed by click', rooms.some((r) => r.startsWith('storage_room@10,28')), rooms.join(' '));
 await page.keyboard.press('Escape');
 
 // เร่งเวลาให้ผู้กล้าเข้ามาต่อสู้

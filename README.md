@@ -1,4 +1,4 @@
-# DUNGEON LORD: MONSTER EMPIRE — Prototype v0.2
+# DUNGEON LORD: MONSTER EMPIRE — Prototype v0.3
 
 เกม Pixel Art Top-down Dungeon Management เล่นบนเบราว์เซอร์ (HTML5 Canvas + JavaScript ES Modules ไม่ต้อง build)
 Deploy บน Vercel ได้ทันที และบันทึกเกมด้วย **รหัส 4 ตัว** ผ่าน `/api/save`
@@ -75,17 +75,21 @@ src/managers/FusionManager.js  ระบบ Fusion
 
 ## สถานะระบบเทียบกับ GDD
 
-ทดสอบแล้ว = ผ่าน `tests/sim.test.mjs` (58 ข้อ), `tests/long.test.mjs` (บอท 100 วันถึง Lv4) และ/หรือ `tests/browser.test.mjs` (ผ่าน UI จริงใน Chrome)
+ทดสอบแล้ว = ผ่าน `tests/sim.test.mjs` (75 ข้อ), `tests/long.test.mjs` (บอท 100 วันถึง Lv4) และ/หรือ `tests/browser.test.mjs` (ผ่าน UI จริงใน Chrome)
 
 | ระบบ (Prototype v0.1 §35) | สถานะ |
 |---|---|
-| แผนที่ Top-down Tile 12x12 ขยายได้, กำแพง/ประตู/ทางเดิน | ✅ ทดสอบแล้ว |
+| แผนที่ Top-down เริ่ม 22x20 ขยายได้ถึง 64x48, ห้องขนาดใหญ่ขึ้น (4x4–7x7), วางห้องทับทางเดินได้ | ✅ ทดสอบแล้ว |
+| ผู้กล้าผันผวนรายวัน: วันเงียบ/ปกติ/คึกคัก/บุกหนัก, ปาร์ตี้ใหญ่สุด 8, คลื่นต่อเนื่อง, เพิ่มตามจำนวนวันที่อยู่รอด | ✅ ทดสอบแล้ว |
 | ระบบเดิน + A* (8 ทิศ, ไม่ตัดมุม, เลี่ยงกับดักสำหรับ Rogue) | ✅ ทดสอบแล้ว |
 | สร้าง/อัปเกรด/หมุน/ย้าย/รื้อห้อง + ตรวจเส้นทางและการเชื่อมต่อ | ✅ ทดสอบแล้ว |
 | มอนสเตอร์ 110 ชนิด (Lv1 จ้างได้ 10 ชนิด) + Unique ID + ตั้งชื่อ | ✅ |
 | Hero Spawn รายวัน, ปาร์ตี้ 1–6, Formation, Rank F–SSS, **60 Class** แต่ละคลาส 3 สกิล + AI + จุดอ่อน | ✅ ทดสอบแล้ว |
 | Combat Real-time: สูตร ATK×Skill×100/(100+DEF), MATK/MDEF, ACC/EVA, Crit, MP, ธาตุ 12 ธาตุ, สถานะ 17 แบบ, Summon, Revive, Protect, Taunt | ✅ ทดสอบแล้ว |
-| Gold / Loot / Inventory (เก็บ จัดเรียง ขาย ใช้ สวม ถอด อัปเกรด คราฟต์) | ✅ ทดสอบแล้ว |
+| Hero Loot & Cuisine CopyPack: ไอเทมตามแคตตาล็อก + ไอคอนจากภาพจริง, Drop Tier normal/elite/boss (2/4/6 ครั้ง), Hero Remains, แท็บคลัง, ล็อก, ขาย Common ทั้งหมด, ยืนยันก่อนขาย Legendary/Mythic | ✅ ทดสอบแล้ว |
+| สถานีแปรรูป 6 แบบ (เตาหลอม/โต๊ะแปรรูป/ครัว/ห้องปรุงยา/เครื่องสกัดวิญญาณ/โรงถ้วยรางวัล) ระดับ 1–3 + คิวงาน | ✅ ทดสอบแล้ว |
+| Monster Cuisine 20 สูตร, บัฟอาหาร 1 อย่างต่อตัว (HP/ATK/DEF/MATK/ธาตุ/ต้านทาน/Lifesteal/EXP) | ✅ ทดสอบแล้ว |
+| กับดัก 50 แบบตาม Trap DB + ภาพจริง: รูปแบบ hit/ยิง/แนวตรง/วงกว้าง/พื้นที่/กระโดด/ทั้งห้อง, ดาเมจ 9 ประเภท, Lv1–5, คอมโบ, ซินเนอร์จีกับมอนสเตอร์, กับดักติดผนัง, ซ่อม/อัปเกรด/ย้าย/ขาย 50% | ✅ ทดสอบแล้ว (ยิงครบ 50 แบบ) |
 | Monster Recruitment / Training (ค่าสถานะเปลี่ยนจริง) / EXP / Level 1–50 | ✅ ทดสอบแล้ว |
 | Cleaning Crew (จัดลำดับงาน, ขนของ, ห้องสกปรก, โรคระบาด) | ✅ ทดสอบแล้ว |
 | Save/Load: รหัส 4 ตัว (คลาวด์), 3 ช่อง + Auto Save, Version, Validation, Checksum, ไม่เขียนทับเซฟเสีย | ✅ ทดสอบแล้ว |
@@ -94,16 +98,19 @@ src/managers/FusionManager.js  ระบบ Fusion
 | Fusion: สูตรแน่นอน 9 สูตร, สูตรธาตุ 8 สูตร, Rarity Table, แสดงอัตราก่อนเริ่ม, Mutation 11 แบบ, ล็อกมอนสเตอร์, ยืนยัน 2 ชั้นสำหรับ Legendary/Mythic | ✅ ทดสอบแล้ว |
 | Monster Tier T1–T5, Training 10 ประเภท + Fatigue band ตามเอกสาร, Codex (มอนสเตอร์/บอส/ผู้กล้า) | ✅ |
 | Sprite จาก sprite sheet: ผู้กล้า 60 คลาส × 4 ทิศ, มอนสเตอร์ 110, บอส 50 · ภาพห้อง 21 ห้อง (เปลี่ยนลวดลายได้) | ✅ |
-| เซฟเวอร์ชัน 1 (v0.1) โหลดได้ — แปลงสายพันธุ์เก่าเป็นสายพันธุ์ใหม่อัตโนมัติ | ✅ ทดสอบแล้ว |
+| เซฟเวอร์ชัน 1–2 โหลดได้ — แปลงสายพันธุ์/ไอเทม/กับดักเก่าเป็นของใหม่อัตโนมัติ (saveVersion 3) | ✅ ทดสอบแล้ว |
+| หน้าปกจากภาพ cover, ภาพห้องครบทุกห้อง (ความละเอียด 768px วาดคมทุกเฟรม), ผู้กล้าหันตามทิศเดิน | ✅ |
 
 **ค่าที่ปรับจากเอกสาร** (ทั้งหมดอยู่ใน `src/config/balance.js`): Monster Tier ใช้ x1.0/1.15/1.35/1.6/2.0 แทน x1.0–3.0 เพราะชันเกินจนผู้กล้าตามไม่ทัน,
 ธาตุที่ต้านทานใช้ x0.6 แทน x0.5, ค่าพลังบอสคูณ 0.45 (เอกสารระบุว่าเป็นค่าทดสอบ), ผู้กล้า Rank F คูณ 0.8 ช่วงต้นเกม
 
 ระบบเพิ่มเติมที่ทำแล้ว: Evolution (เปลี่ยนสายพันธุ์/ค่าสถานะ/สกิล/รูปลักษณ์), Personality 7 แบบ, Fatigue/Hunger/Loyalty,
-อาหาร + ฟาร์ม + ซื้ออัตโนมัติ, Merchant, ค่าบำรุงรายวัน + ประวัติรายรับรายจ่าย, กับดัก 6 ชนิด, Random Events 7 แบบ,
+อาหาร + ฟาร์ม + ซื้ออัตโนมัติ, Merchant, ค่าบำรุงรายวัน + ประวัติรายรับรายจ่าย, Random Events 7 แบบ,
 Reputation, Dungeon Core (HP/Level/Defense/Aura/Upgrade), ประเมินความยากเส้นทาง, Day/Night, Pause/x1/x2/x4, เสียง 8-bit
 
 **ยังไม่ได้สร้าง:**
+- กรอบ/ปุ่มจากภาพ UI Kit และ Button Sheet (ตอนนี้ใช้สไตล์ JRPG ที่เขียนด้วย CSS)
+- กฎแปรรูปอัตโนมัติ (auto-processing rules) และ Mimic Lure จากเอกสาร System Details
 - Monster Breeding / Nursery, Spawn Room / Biome, Mana
 - Monster Relationship / Combo Skill (§11)
 - Research Lab / Research Tree

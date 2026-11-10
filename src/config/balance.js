@@ -3,14 +3,14 @@
 // ค่าจาก Hero/Monster Design Bible ถูกนำมาเป็นค่าเริ่มต้น และปรับบางค่าจากการทดสอบจำลอง (ระบุไว้ในคอมเมนต์)
 // ============================================================
 export const BALANCE = {
-  saveVersion: 2,
+  saveVersion: 3,
 
   start: { gold: 500, food: 30, reputation: 0, dungeonLevel: 1, coreHp: 600 },
 
-  world: { width: 40, height: 30 },
-  startArea: { x: 0, y: 9, w: 12, h: 12 },
-  entrance: { x: 0, y: 15 },
-  expansion: { step: 4, baseCost: 400, costGrowth: 1.7 },
+  world: { width: 64, height: 48 },
+  startArea: { x: 0, y: 14, w: 22, h: 20 },
+  entrance: { x: 0, y: 24 },
+  expansion: { step: 6, baseCost: 400, costGrowth: 1.7 },
 
   time: {
     gameMinutesPerSecond: 10,      // 1 วินาทีจริง = 10 นาทีในเกม (1 วัน ≈ 2.4 นาที ที่ x1)
@@ -40,7 +40,16 @@ export const BALANCE = {
   heroes: {
     baseDailyCount: 5,             // GDD: 5 คน/วัน
     perLevelDaily: 2,
-    perReputation: 0.01, maxRepBonus: 12, maxDailyCount: 36,
+    perReputation: 0.01, maxRepBonus: 12, maxDailyCount: 48,
+    perDay: 0.12, maxDayBonus: 10,  // ยิ่งอยู่รอดนาน ผู้กล้ายิ่งมาก
+    partyCap: 8,
+    // ประเภทวัน (สุ่มทุกวัน) — mult = ตัวคูณจำนวนผู้กล้าทั้งวัน, partyBonus = ขนาดปาร์ตี้สูงสุดเพิ่ม
+    dayTypes: [
+      { id: 'quiet', th: 'วันเงียบ', w: 0.15, mult: [0.5, 0.8], partyBonus: 0, waveChance: 0, msg: 'วันนี้ผู้กล้าน้อยกว่าปกติ' },
+      { id: 'normal', th: 'วันปกติ', w: 0.45, mult: [0.9, 1.3], partyBonus: 0, waveChance: 0.15 },
+      { id: 'busy', th: 'วันคึกคัก', w: 0.27, minDay: 3, mult: [1.4, 1.9], partyBonus: 1, waveChance: 0.35, bigBias: true, msg: '⚔ ข่าวลือเรื่องสมบัติแพร่ไป — ผู้กล้าแห่มามากกว่าปกติ!' },
+      { id: 'siege', th: 'วันบุกหนัก', w: 0.13, minDay: 7, mult: [2.2, 3.0], partyBonus: 2, waveChance: 0.6, bigBias: true, msg: '🔥 กองทัพผู้กล้ารวมพลบุกดันเจี้ยน!' },
+    ],
     spawnStartHour: 7, spawnEndHour: 22, nightSpawnChance: 0.25,
     // Hero Bible §2 (F x1.0 … SSS x3.0)
     rankMultiplier: { F: 1.0, E: 1.1, D: 1.2, C: 1.35, B: 1.5, A: 1.75, S: 2.0, SS: 2.5, SSS: 3.0 },
@@ -86,7 +95,7 @@ export const BALANCE = {
     upgradeCost: [0, 800, 2500, 7000, 20000],
   },
 
-  economy: { sellMultiplier: 0.5, foodPrice: 4, roomRefund: 0.5, corridorCost: 5, historyDays: 14, roomUpkeepGrowth: 1.35 },
+  economy: { buyMult: 2.5, sellMultiplier: 0.5, foodPrice: 4, roomRefund: 0.5, corridorCost: 5, historyDays: 14, roomUpkeepGrowth: 1.35 },
 
   training: {
     sessionHours: 4, baseCost: 20, costPerLevel: 6,
@@ -106,7 +115,7 @@ export const BALANCE = {
     diseaseChancePerDay: 0.25, corpseBoneChance: 0.6,
   },
 
-  traps: { rogueDisarmChance: 0.3, durabilityPerTrigger: 1, upgradeCostMult: 0.8, upgradeDamageMult: 1.3, levelScale: 0.45 },
+  traps: { rogueDisarmChance: 0.3, durabilityPerTrigger: 1, upgradeCostMult: 0.8, levelScale: 0.35, damageScale: 1.0 },
   rooms: { upgradeCostGrowth: 1.7, maxLevel: 5 },
   evolution: { stageLevels: [21, 31, 41] },
 
@@ -125,6 +134,14 @@ export const BALANCE = {
     levelKeep: 0.5,
   },
 
+  inventory: { stackLimit: 99 },
+  // Hero Loot spec: Normal 2 rolls, Elite 4, Boss 6 (+ ชิ้นส่วนผู้กล้าการันตี)
+  drops: {
+    rarityWeights: { common: 60, uncommon: 25, rare: 10, epic: 4, legendary: 0.9, mythic: 0.1 },
+    tiers: { F: 'normal', E: 'normal', D: 'normal', C: 'normal', B: 'elite', A: 'elite', S: 'elite', SS: 'boss', SSS: 'boss' },
+    rolls: { normal: 2, elite: 4, boss: 6 }, rarityBonus: { normal: 0, elite: 5, boss: 15 },
+    remainsQty: [1, 2],
+  },
   loot: {
     equipmentDropChance: 0.3, materialDropChance: 0.7, potionDropChance: 0.12,
     crystalDropChance: { F: 0.01, E: 0.025, D: 0.04, C: 0.06, B: 0.08, A: 0.1, S: 0.12, SS: 0.15, SSS: 0.18 },

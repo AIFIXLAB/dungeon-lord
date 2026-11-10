@@ -12,7 +12,7 @@ export const INCOME_LABELS = {
 export const EXPENSE_LABELS = {
   monster_recruitment: 'จ้างมอนสเตอร์', monster_food: 'ซื้ออาหาร', monster_training: 'ฝึกมอนสเตอร์', room_construction: 'ก่อสร้าง',
   room_upgrade: 'อัปเกรดห้อง', maintenance: 'ค่าบำรุงรักษา', trap_production: 'กับดัก', evolution: 'วิวัฒนาการ',
-  core_upgrade: 'อัปเกรด Core', boss_summon: 'อัญเชิญบอส', fusion: 'Fusion', expansion: 'ขยายพื้นที่', shop: 'ซื้อของ Merchant', item_upgrade: 'อัปเกรดไอเทม',
+  core_upgrade: 'อัปเกรด Core', station: 'สร้างสถานีแปรรูป', processing: 'ค่าแปรรูป', boss_summon: 'อัญเชิญบอส', fusion: 'Fusion', expansion: 'ขยายพื้นที่', shop: 'ซื้อของ Merchant', item_upgrade: 'อัปเกรดไอเทม',
   crafting: 'คราฟต์', stolen: 'ถูกขโมย', event: 'เหตุการณ์',
 };
 
@@ -70,16 +70,14 @@ export class EconomyManager {
     const lvl = this.game.state.dungeonLevel;
     const disc = this.game.state.shopDiscountDays > 0 ? 0.75 : 1;
     const repDisc = 1 - Math.min(0.1, this.game.state.reputation / 5000);
-    return SHOP.filter((s) => s.unlock <= lvl).map((s) => ({ ...s, price: Math.round(ITEMS[s.item].price * (s.priceMult || 1) * disc * repDisc) }));
+    return SHOP.filter((s) => s.unlock <= lvl).map((s) => ({ ...s, price: Math.max(5, Math.round(ITEMS[s.item].price * BALANCE.economy.buyMult * disc * repDisc)) }));
   }
 
   buyItem(itemId) {
     const s = this.shopItems().find((x) => x.item === itemId);
     if (!s) return { ok: false, reason: 'ไม่มีขาย' };
     if (this.game.state.gold < s.price) return { ok: false, reason: 'Gold ไม่พอ' };
-    const d = ITEMS[itemId];
-    const stackExists = d.stack && this.game.inventory.count(itemId) > 0;
-    if (!stackExists && this.game.inventory.freeSlots() <= 0) return { ok: false, reason: 'คลังเต็ม' };
+    if (!this.game.inventory.canAdd(itemId)) return { ok: false, reason: 'คลังเต็ม' };
     this.spend('shop', s.price);
     this.game.inventory.add(itemId, 1, 'common');
     return { ok: true };

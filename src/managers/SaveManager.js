@@ -2,6 +2,8 @@
 import { BALANCE } from '../config/balance.js';
 import { MONSTERS } from '../data/monsters.js';
 import { BOSSES } from '../data/bosses.js';
+import { LEGACY_ITEMS } from '../data/items.js';
+import { LEGACY_TRAPS } from '../data/traps.js';
 import { ROOMS } from '../data/rooms.js';
 import { ITEMS } from '../data/items.js';
 import { HERO_CLASSES } from '../data/heroes.js';
@@ -102,6 +104,23 @@ export class SaveManager {
       d.core.maxHp = Math.max(d.core.maxHp, BALANCE.start.coreHp); d.core.hp = d.core.maxHp;
       d.summons = []; d.fusions = []; d.codex ||= {};
       obj.version = 2;
+      obj._migrated = true;
+    }
+    if (obj.version === 2) {
+      // v0.2 → v0.3: ไอเทมใหม่ตาม Loot Catalog และกับดัก 50 ชนิด
+      const map = (id) => LEGACY_ITEMS[id] || id;
+      const inv = [];
+      for (const it of d.inventory || []) {
+        const id = map(it.itemId); if (!ITEMS[id]) continue;
+        const ex = inv.find((x) => x.itemId === id && !it.plus && !x.plus);
+        if (ex) ex.qty += it.qty; else inv.push({ uid: it.uid, itemId: id, qty: it.qty, plus: it.plus || 0, locked: false });
+      }
+      d.inventory = inv;
+      for (const e of Object.values(d.equipped || {})) { e.itemId = map(e.itemId); if (!ITEMS[e.itemId]) e.itemId = 'rusty_sword'; }
+      for (const f of d.floor || []) if (f.items) f.items = f.items.map((i) => ({ itemId: map(i.itemId), qty: i.qty })).filter((i) => ITEMS[i.itemId]);
+      for (const t of d.dungeon?.traps || []) { t.type = LEGACY_TRAPS[t.type] || t.type; t.invested ||= TRAPS[t.type]?.price || 100; }
+      d.stations ||= {}; d.procJobs ||= [];
+      obj.version = 3;
       obj._migrated = true;
     }
     return obj;

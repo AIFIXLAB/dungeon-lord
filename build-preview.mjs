@@ -9,12 +9,15 @@ const css = (await readFile('style.css', 'utf8')).replace('height: 100dvh', 'hei
 const html = await readFile('index.html', 'utf8');
 const body = html.split('<body>')[1].split('<script')[0];
 const b64 = async (p, mime) => `data:${mime};base64,${(await readFile(p)).toString('base64')}`;
-const atlas = JSON.parse(await readFile('assets/sprites/atlas.json', 'utf8'));
+const atlas = { ...JSON.parse(await readFile('assets/sprites/atlas.json', 'utf8')), ...JSON.parse(await readFile('assets/items/atlas.json', 'utf8')) };
 const sheets = {};
 for (const n of ['heroes', 'monsters', 'bosses']) sheets[n] = await b64(`assets/sprites/${n}.webp`, 'image/webp');
+sheets.items = await b64('assets/items/items.webp', 'image/webp');
+sheets.traps = await b64('assets/traps/traps.webp', 'image/webp');
+const cover = `data:image/webp;base64,${(await sharp('assets/ui/cover.webp').resize(1400).webp({ quality: 82 }).toBuffer()).toString('base64')}`;
 const rooms = {};
 for (const f of await readdir('assets/rooms')) rooms[f.replace('.webp', '')] = `data:image/webp;base64,${(await sharp(`assets/rooms/${f}`).resize(560, 560).webp({ quality: 86 }).toBuffer()).toString('base64')}`;
-const assets = `window.__ASSETS__=${JSON.stringify({ atlas, sheets, rooms })};`;
+const assets = `window.__ASSETS__=${JSON.stringify({ atlas, sheets, rooms, cover })};`;
 const out = `<title>Dungeon Lord: Monster Empire</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600&family=Pixelify+Sans:wght@400;500;600;700&display=swap">
 <style>${css}

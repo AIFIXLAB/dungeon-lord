@@ -30,12 +30,29 @@ check('path avoids rock', path.every((p) => g.dungeon.walkable(Math.floor(p.x), 
 check('no path into rock', g.dungeon.findPath(e.x, e.y, 11.5, 9.5) === null);
 
 console.log('\n[3] Room placement rules');
-check('overlap rejected', !g.dungeon.canPlaceRoom('barracks', 4, 14).ok);
-check('outside area rejected', !g.dungeon.canPlaceRoom('barracks', 14, 14).ok);
-const free = g.dungeon.canPlaceRoom('storage_room', 7, 17);
+check('overlap rejected', !g.dungeon.canPlaceRoom('barracks', 4, 22).ok);
+check('outside area rejected', !g.dungeon.canPlaceRoom('barracks', 24, 22).ok);
+const free = g.dungeon.canPlaceRoom('storage_room', 10, 28);
 check('valid spot accepted', free.ok, JSON.stringify(free));
-check('cannot remove critical corridor', !g.dungeon.removeCorridor(8, 15).ok);
+check('cannot remove critical corridor', !g.dungeon.removeCorridor(11, 24).ok);
 
+{
+  // ห้องวางทับทางเดินได้ และทางเดินกลับมาเมื่อรื้อห้อง
+  const go = new Game(null, { headless: true, seed: 5, store: memStore(), fetch: null });
+  go.state.gold = 1e5;
+  for (let x = 19; x <= 21; x++) go.dungeon.buildCorridor(x, 24);
+  go.dungeon.expand('right');
+  for (let x = 22; x <= 26; x++) go.dungeon.buildCorridor(x, 24);
+  const r = go.dungeon.buildRoom('training_room', 22, 22, 0);
+  check('room can be built over corridor', r.ok && r.room.status === 'active', r.reason);
+  check('rooms are bigger (guard 6x6)', go.dungeon.roomDims('guard_room', 0).join() === '6,6');
+  go.dungeon.demolishRoom(r.room.id);
+  check('corridor restored after demolish', go.dungeon.walkable(24, 24));
+  // จำนวนผู้กล้าต่อวันผันผวน
+  const counts = [];
+  for (let d = 1; d <= 40; d++) { go.state.time = d * 1440; go.heroes.scheduleDay(d * 1440); counts.push(go.state.heroSchedule.reduce((a, b) => a + b.size, 0)); }
+  check('hero count varies by day', Math.max(...counts) >= Math.min(...counts) * 2.5, counts.join(','));
+}
 console.log('\n[4] Recruit + economy');
 const r1 = g.monsters.recruit('rat', 'Pip');
 check('recruit rat', r1.ok && g.state.gold === 455);
@@ -62,7 +79,7 @@ function bot(game) {
     if (!has('cleaning_room') && s.gold > 200) tryBuild('cleaning_room');
     if (!has('training_room') && s.gold > 350) tryBuild('training_room');
     if (d.roomsOfType('barracks', false).length < 2 && s.monsters.length >= d.barracksCapacity() - 1 && s.gold > 250) tryBuild('barracks');
-    if (s.gold > 600 && d.canExpand('right').ok && d.d.area.w < 16) d.expand('right');
+    if (s.gold > 600 && d.canExpand('right').ok && d.d.area.w < 28) d.expand('right');
   }
   if (s.monsters.length < 10 && s.gold > 260) {
     const pick = ['skeleton', 'goblin', 'wolf', 'mushroom', 'boar'][s.monsters.length % 5];
@@ -116,6 +133,7 @@ console.log('\n[7] Evolution');
 const gob = g.monsters.create('goblin', 'EvoTest');
 g.state.monsters.push(gob);
 gob.level = 21;
+g.state.inventory = [];
 g.inventory.add('evolution_crystal', 1); g.inventory.add('hide', 3);
 const crystalsBefore = g.inventory.count('evolution_crystal');
 g.state.gold += 1000;
@@ -187,8 +205,8 @@ console.log('\n[12] Boss + Fusion');
 {
   const gb = new Game(null, { headless: true, seed: 99, store: memStore(), fetch: null });
   gb.state.gold = 1e6; gb.state.dungeonLevel = 2;
-  gb.dungeon.expand('right'); gb.dungeon.buildCorridor(12, 15); gb.dungeon.buildCorridor(13, 15);
-  const br = gb.dungeon.buildRoom('boss_room', 12, 11, 0);
+  gb.dungeon.expand('right'); gb.dungeon.buildCorridor(19, 24); gb.dungeon.buildCorridor(20, 24);
+  const br = gb.dungeon.buildRoom('boss_room', 21, 21, 0);
   check('boss room built', br.ok, br.reason);
   const sb = gb.monsters.summonBoss('boss_slime_king');
   check('boss summoned', sb.ok && gb.monsters.currentBoss()?.isBoss, sb.reason);
@@ -198,8 +216,8 @@ console.log('\n[12] Boss + Fusion');
   for (let i = 0; i < 40; i++) gb.step(0.05);
   check('boss phase 3 at 20% HP', boss.phase === 3, boss.phase);
   gb.state.heroes = [];
-  gb.dungeon.buildCorridor(11, 17); gb.dungeon.buildCorridor(11, 18);
-  const fc = gb.dungeon.buildRoom('fusion_chamber', 6, 17, 0);
+  gb.dungeon.buildCorridor(9, 30);
+  const fc = gb.dungeon.buildRoom('fusion_chamber', 10, 28, 0);
   check('fusion chamber built', fc.ok, fc.reason);
   const a = gb.monsters.recruit('goblin').monster, b2 = gb.monsters.recruit('skeleton').monster;
   a.level = 10; b2.level = 10;
@@ -214,6 +232,54 @@ console.log('\n[12] Boss + Fusion');
   for (let i = 0; i < 20 * 60 && gb.state.fusions.length; i++) gb.step(0.05);
   const res = gb.state.monsters.find((m) => m.species === 'ghoul');
   check('fusion result created', !!res && res.level === 5, res?.level);
+}
+
+console.log('\n[13b] Loot / Processing / Cuisine / Traps');
+{
+  const gl = new Game(null, { headless: true, seed: 5, store: memStore(), fetch: null });
+  gl.state.gold = 1e6; gl.state.dungeonLevel = 10;
+  const h = gl.heroes.createHero('warrior', 'SS', 'x');
+  const loot = gl.heroes.rollLoot(h);
+  check('boss-tier hero drops 6+ rolls incl. remains', loot.items.reduce((s, i) => s + 1, 0) >= 4 && loot.items.some((i) => ['hero_meat', 'hero_bone', 'hero_blood', 'hero_hair', 'hero_heart', 'hero_soul_fragment'].includes(i.itemId)), JSON.stringify(loot.items));
+  const inv = gl.inventory;
+  gl.state.inventory = [];
+  inv.add('rusty_sword', 2);
+  check('build furnace', inv.buildStation('furnace').ok);
+  const sw = gl.state.inventory.find((i) => i.itemId === 'rusty_sword');
+  const pr = inv.process(sw.uid, 1);
+  check('process started', pr.ok, pr.reason);
+  for (let i = 0; i < 20 * 60 && gl.state.procJobs.length; i++) gl.step(0.05);
+  check('rusty sword -> scrap metal x2', inv.count('scrap_metal') === 2 && inv.count('rusty_sword') === 1);
+  inv.buildStation('kitchen'); inv.add('hero_meat', 2); inv.add('bread', 1);
+  const ck = inv.cook('food_001');
+  check('cook stew', ck.ok, ck.reason);
+  for (let i = 0; i < 20 * 60 && gl.state.procJobs.length; i++) gl.step(0.05);
+  check('stew produced', inv.count('food_001') === 1);
+  const mon = gl.state.monsters[0]; const hp0 = gl.monsters.stats(mon).hp;
+  const fd = inv.feed(gl.state.inventory.find((i) => i.itemId === 'food_001').uid, mon);
+  check('feed buff HP +10%', fd.ok && gl.monsters.stats(mon).hp > hp0, `${hp0} -> ${gl.monsters.stats(mon).hp}`);
+  inv.add('torn_cloak', 3); const cl = gl.state.inventory.find((i) => i.itemId === 'torn_cloak');
+  inv.toggleLock(cl.uid);
+  check('locked item cannot sell', !inv.sell(cl.uid).ok);
+  const { TRAPS } = await import('../src/data/traps.js');
+  check('50 traps', Object.keys(TRAPS).length === 50);
+  gl.dungeon.buildCorridor(9, 30);
+  const ws = gl.dungeon.buildRoom('trap_workshop', 10, 28, 0);
+  check('trap workshop', ws.ok, ws.reason);
+  let placed = 0;
+  for (const [id, t] of Object.entries(TRAPS).slice(0, 6)) { const r = gl.dungeon.placeTrap(id, 1 + placed, 24); if (r.ok) placed++; }
+  check('placed traps on corridor', placed >= 4, placed);
+  gl.state.heroes = []; gl.state.parties = [];
+  gl.heroes.spawnParty(3, { rank: 'F' });
+  const hp = () => gl.state.heroes.reduce((s, x) => s + x.hp, 0);
+  for (let i = 0; i < 20 * 8; i++) gl.step(0.05);
+  check('traps fired', gl.state.dungeon.traps.some((t) => t.triggers > 0), JSON.stringify(gl.state.dungeon.traps.map((t) => [t.type, t.triggers])));
+  let errs = 0;
+  for (const id of Object.keys(TRAPS)) {
+    try { const t = { id: 'x' + id, type: id, x: 3, y: 15, level: 5, durability: 99, cd: 0 }; gl.state.dungeon.traps.push(t); gl.heroes.spawnParty(2, { rank: 'C' }); for (const hh of gl.state.heroes) { hh.inside = true; hh.x = 3.5; hh.y = 15.5; } gl.traps.fire(t, gl.state.heroes.filter((x) => !x.dead)); for (let i = 0; i < 40; i++) gl.step(0.05); gl.state.dungeon.traps.pop(); }
+    catch (e) { errs++; console.log('   trap error', id, e.message); }
+  }
+  check('all 50 traps fire without error at Lv5', errs === 0);
 }
 
 console.log('\n[13] 60 hero classes');

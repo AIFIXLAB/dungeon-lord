@@ -2,7 +2,8 @@
 import { BALANCE } from '../config/balance.js';
 import { ROOMS } from '../data/rooms.js';
 import { HERO_CLASSES } from '../data/heroes.js';
-import { TRAPS } from '../data/traps.js';
+import { TRAPS, TYPE_COLOR } from '../data/traps.js';
+import { ITEMS } from '../data/items.js';
 import { ELEMENT_INFO } from '../data/elements.js';
 import { STATUS_INFO } from '../data/skills.js';
 import { getSprite, shade } from './sprites.js';
@@ -27,6 +28,8 @@ export class Renderer {
     this.showPath = false;
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    // ปรับขนาด canvas ทุกครั้งที่พื้นที่แผนที่เปลี่ยน (เช่น แถบด้านบนขึ้นบรรทัดใหม่) — กันภาพล้นทับเมนู
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
   }
 
   setGame(game) {
@@ -249,6 +252,8 @@ export class Renderer {
       const W = r.w * TS, H = r.h * TS, iw = img.width, ih = img.height;
       const k = Math.max(W / iw, H / ih), sw = W / k, sh = H / k;
       c.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, r.x * TS, r.y * TS, W, H);
+      const prop = ROOMS[r.type].prop && atlasSprite(ROOMS[r.type].prop);
+      if (prop) { const S = Math.min(W, H) * 0.55; c.drawImage(prop.img, prop.x, prop.y, prop.w, prop.h, r.x * TS + W / 2 - S / 2, r.y * TS + H / 2 - S / 2, S, S * prop.h / prop.w); }
       c.strokeStyle = r.status === 'active' ? 'rgba(232,228,240,0.35)' : '#ff4a4a'; c.lineWidth = 0.6;
       c.strokeRect(r.x * TS + 0.3, r.y * TS + 0.3, W - 0.6, H - 0.6);
     }
@@ -307,7 +312,10 @@ export class Renderer {
         px(-7, 2, 3, 1, '#6a1010');
       } else if (o.type === 'loot') {
         const sparkle = Math.sin(this.time * 6 + o.x * 3) > 0.6;
-        px(-3, -2, 7, 6, '#1a1020'); px(-2, -1, 5, 4, '#b8822a'); px(-2, -1, 5, 1, '#e8b84a'); px(0, 0, 1, 2, '#ffd84a');
+        const top = (o.items || [])[0];
+        const a = top && atlasSprite(ITEMS[top.itemId]?.icon);
+        if (a) { c.imageSmoothingEnabled = true; const S = 9; c.drawImage(a.img, a.x, a.y, a.w, a.h, X - S / 2, Y - S / 2 - 1, S, S * a.h / a.w); c.imageSmoothingEnabled = false; }
+        else { px(-3, -2, 7, 6, '#1a1020'); px(-2, -1, 5, 4, '#b8822a'); px(-2, -1, 5, 1, '#e8b84a'); }
         if (sparkle) px(3, -5, 1, 1, '#ffffff');
       } else if (o.type === 'debris') {
         px(-4, -1, 4, 3, '#5a5060'); px(0, 0, 3, 3, '#6a6070'); px(-1, -3, 3, 2, '#4a4050');
@@ -317,17 +325,29 @@ export class Renderer {
   }
 
   drawTraps(c) {
-    for (const t of this.game.state.dungeon.traps) {
-      const X = t.x * TS, Y = t.y * TS, d = TRAPS[t.type];
-      const broken = t.durability <= 0;
-      c.fillStyle = broken ? '#3a3a3a' : '#2a2a32'; c.fillRect(X + 3, Y + 3, 10, 10);
-      c.fillStyle = broken ? '#5a5a5a' : d.color;
-      const fired = t.fired > 0;
-      if (t.type === 'spike') { for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) c.fillRect(X + 4 + i * 3, Y + 4 + j * 3 - (fired ? 2 : 0), 2, fired ? 4 : 2); }
-      else if (t.type === 'arrow') { c.fillRect(X + 5, Y + 7, 6, 2); c.fillRect(X + 10, Y + 6, 2, 4); }
-      else { c.fillRect(X + 5, Y + 5, 6, 6); if (fired) { c.globalAlpha = 0.6; c.fillRect(X, Y, 16, 16); c.globalAlpha = 1; } }
-      if (t.level > 1) { c.fillStyle = '#ffd84a'; c.font = '5px monospace'; c.fillText(`${t.level}`, X + 12, Y + 6); }
+    const g = this.game;
+    // field (พื้นที่ดาเมจต่อเนื่อง)
+    for (const f of g.traps?.fields || []) {
+      const a = Math.min(1, f.t) * (0.25 + Math.sin(this.time * 10) * 0.06);
+      c.fillStyle = hexA(f.color, a); c.beginPath(); c.arc(f.x * TS, f.y * TS, f.r * TS, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = hexA(f.color, 0.7); c.lineWidth = 0.8; c.stroke();
     }
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+    for (const t of g.state.dungeon.traps) {
+      const X = t.x * TS, Y = t.y * TS, d = TRAPS[t.type]; if (!d) continue;
+      const broken = t.durability <= 0;
+      const a = atlasSprite(d.icon);
+      const fired = t.fired > 0;
+      const S = TS * (fired ? 1.25 : 1.1);
+      if (a) {
+        if (broken) c.filter = 'grayscale(1) brightness(0.6)';
+        c.drawImage(a.img, a.x, a.y, a.w, a.h, X + TS / 2 - S / 2, Y + TS / 2 - S / 2 - (fired ? 1 : 0), S, S * a.h / a.w);
+        c.filter = 'none';
+      } else { c.fillStyle = TYPE_COLOR[d.type]; c.fillRect(X + 4, Y + 4, 8, 8); }
+      if (fired) { c.fillStyle = hexA(TYPE_COLOR[d.type], 0.35); c.beginPath(); c.arc(X + TS / 2, Y + TS / 2, TS * 0.8, 0, Math.PI * 2); c.fill(); }
+      if (t.level > 1) { c.fillStyle = '#000'; c.fillRect(X + 11, Y + 1, 5, 6); c.fillStyle = '#ffd84a'; c.font = 'bold 5px monospace'; c.fillText(`${t.level}`, X + 12, Y + 6); }
+    }
+    c.imageSmoothingEnabled = false;
   }
 
   drawDifficultyPath(c) {
@@ -604,7 +624,7 @@ export class Renderer {
       c.fillStyle = ok ? (o.erase ? 'rgba(255,120,60,0.45)' : 'rgba(80,255,120,0.4)') : 'rgba(255,60,60,0.3)';
       c.fillRect(o.tx * TS, o.ty * TS, TS, TS);
     } else if (o.type === 'trap') {
-      const ok = g.dungeon.canPlaceTrap(o.trapType, o.tx, o.ty).ok;
+      const ok = (o.moveId ? g.dungeon.canPlaceTrap(g.state.dungeon.traps.find((t) => t.id === o.moveId)?.type, o.tx, o.ty, o.moveId) : g.dungeon.canPlaceTrap(o.trapType, o.tx, o.ty)).ok;
       c.fillStyle = ok ? 'rgba(80,255,120,0.4)' : 'rgba(255,60,60,0.3)';
       c.fillRect(o.tx * TS, o.ty * TS, TS, TS);
       const r = TRAPS[o.trapType].range;
@@ -613,5 +633,6 @@ export class Renderer {
   }
 }
 
+function hexA(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
 function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`; }
 export { TS, OX };

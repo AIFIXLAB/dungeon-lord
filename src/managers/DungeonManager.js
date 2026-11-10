@@ -99,7 +99,7 @@ export class DungeonManager {
       if (tx === this.d.entrance.x && ty === this.d.entrance.y) return { ok: false, reason: 'ทับทางเข้า' };
       const rid = this.roomIdAt(tx, ty);
       if (rid && rid !== ignoreRoomId) return { ok: false, reason: 'ห้ามสร้างทับห้องเดิม' };
-      if (this.tileType(tx, ty) === T_CORRIDOR) return { ok: false, reason: 'ทับทางเดิน (ลบทางเดินก่อน)' };
+      // ทับทางเดินได้ — ทางเดินใต้ห้องจะกลายเป็นพื้นห้อง (และกลับมาเมื่อรื้อ/ย้ายห้อง)
       if (this.trapAt.has(`${tx},${ty}`)) return { ok: false, reason: 'ทับกับดัก' };
     }
     // ต้องติดกับพื้นที่เดินได้ที่เชื่อมกับทางเข้า (ไม่งั้นใช้งานไม่ได้) — อนุญาตวางแต่เตือน
@@ -258,23 +258,26 @@ export class DungeonManager {
     const n = this.d.expansions || 0;
     return Math.round(BALANCE.expansion.baseCost * Math.pow(BALANCE.expansion.costGrowth, n));
   }
-  canExpand(dir) {
+  // ขยายทีละ step (ถ้าเหลือไม่ถึง step จะขยายเท่าที่เหลือจนถึงขนาดสูงสุด/ขอบโลก)
+  expandStep(dir) {
     const a = this.d.area, step = BALANCE.expansion.step;
     const max = LEVELS[this.game.state.dungeonLevel - 1].maxArea;
-    if (dir === 'right') {
-      if (a.w + step > max.w) return { ok: false, reason: 'ถึงขนาดสูงสุดของ Dungeon Level นี้' };
-      if (a.x + a.w + step > this.W) return { ok: false, reason: 'สุดขอบโลก' };
-    } else if (dir === 'up' || dir === 'down') {
-      if (a.h + step > max.h) return { ok: false, reason: 'ถึงขนาดสูงสุดของ Dungeon Level นี้' };
-      if (dir === 'up' && a.y - step < 0) return { ok: false, reason: 'สุดขอบโลก' };
-      if (dir === 'down' && a.y + a.h + step > this.H) return { ok: false, reason: 'สุดขอบโลก' };
-    } else return { ok: false, reason: 'ทิศทางไม่ถูกต้อง' };
-    return { ok: true, cost: this.expansionCost() };
+    if (dir === 'right') return Math.min(step, max.w - a.w, this.W - (a.x + a.w));
+    if (dir === 'up') return Math.min(step, max.h - a.h, a.y);
+    if (dir === 'down') return Math.min(step, max.h - a.h, this.H - (a.y + a.h));
+    return 0;
+  }
+  canExpand(dir) {
+    if (!['right', 'up', 'down'].includes(dir)) return { ok: false, reason: 'ทิศทางไม่ถูกต้อง' };
+    const a = this.d.area, max = LEVELS[this.game.state.dungeonLevel - 1].maxArea;
+    const n = this.expandStep(dir);
+    if (n <= 0) return { ok: false, reason: (dir === 'right' ? a.w >= max.w : a.h >= max.h) ? 'ถึงขนาดสูงสุดของ Dungeon Level นี้' : 'สุดขอบโลก' };
+    return { ok: true, cost: this.expansionCost(), n };
   }
   expand(dir) {
     const chk = this.canExpand(dir); if (!chk.ok) return chk;
     if (!this.game.economy.spend('expansion', chk.cost)) return { ok: false, reason: 'Gold ไม่พอ' };
-    const a = this.d.area, step = BALANCE.expansion.step;
+    const a = this.d.area, step = chk.n;
     if (dir === 'right') a.w += step;
     if (dir === 'up') { a.y -= step; a.h += step; }
     if (dir === 'down') a.h += step;
@@ -292,57 +295,75 @@ export class DungeonManager {
   }
   defaultGuardRoom() { return this.roomsOfType('guard_room')[0] || this.coreRoom(); }
 
-  // ---------- Traps ----------
+  // ---------- Traps (Dungeon Trap Database 50) ----------
   maxTraps() {
     const w = this.roomsOfType('trap_workshop')[0];
     return w ? this.roomEffect(w, 'maxTraps') : 0;
   }
-  canPlaceTrap(type, x, y) {
+  isWallSpot(x, y) {
+    return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !this.walkable(x + dx, y + dy));
+  }
+  canPlaceTrap(type, x, y, ignoreId = null) {
     const def = TRAPS[type];
     if (!def) return { ok: false, reason: 'ไม่มีกับดักนี้' };
     if (!this.roomsOfType('trap_workshop').length) return { ok: false, reason: 'ต้องสร้าง Trap Workshop ก่อน' };
-    if (def.unlock > this.game.state.dungeonLevel) return { ok: false, reason: `ต้องมี Dungeon Level ${def.unlock}` };
-    if (this.d.traps.length >= this.maxTraps()) return { ok: false, reason: 'กับดักเต็มโควตา (อัปเกรด Trap Workshop)' };
+    if (def.unlock > this.game.state.dungeonLevel) return { ok: false, reason: `กับดัก ${def.rarity} ปลดล็อกที่ Dungeon Lv.${def.unlock}` };
+    if (!ignoreId && this.d.traps.length >= this.maxTraps()) return { ok: false, reason: 'กับดักเต็มโควตา (อัปเกรด Trap Workshop)' };
     if (!this.walkable(x, y)) return { ok: false, reason: 'ต้องวางบนพื้นที่เดินได้' };
     if (x === this.d.entrance.x && y === this.d.entrance.y) return { ok: false, reason: 'วางที่ทางเข้าไม่ได้' };
     const r = this.roomAtTile(x, y);
     if (r?.type === 'core_room') return { ok: false, reason: 'วางในห้อง Core ไม่ได้' };
-    if (this.trapAt.has(`${x},${y}`)) return { ok: false, reason: 'มีกับดักอยู่แล้ว' };
+    const ex = this.trapAt.get(`${x},${y}`);
+    if (ex && ex.id !== ignoreId) return { ok: false, reason: 'มีกับดักอยู่แล้ว' };
+    if (def.place === 'wall' && !this.isWallSpot(x, y)) return { ok: false, reason: 'ต้องติดตั้งชิดผนัง' };
     return { ok: true };
   }
   placeTrap(type, x, y) {
     const chk = this.canPlaceTrap(type, x, y); if (!chk.ok) return chk;
     const def = TRAPS[type];
-    if (!this.game.economy.spend('trap_production', def.cost)) return { ok: false, reason: 'Gold ไม่พอ' };
-    this.d.traps.push({ id: uid(this.game, 't'), type, x, y, level: 1, durability: def.durability, cd: 0 });
+    if (!this.game.economy.spend('trap_production', def.price)) return { ok: false, reason: 'Gold ไม่พอ' };
+    this.d.traps.push({ id: uid(this.game, 't'), type, x, y, level: 1, durability: def.durability, cd: 0, invested: def.price });
     this.rebuild();
-    this.game.notify(`วาง ${def.name}`, 'good');
+    this.game.notify(`ติดตั้ง ${def.th}`, 'good');
     return { ok: true };
   }
-  trapUpgradeCost(t) { return Math.round(TRAPS[t.type].cost * BALANCE.traps.upgradeCostMult * t.level); }
+  moveTrap(id, x, y) {
+    const t = this.d.traps.find((q) => q.id === id); if (!t) return { ok: false, reason: 'ไม่พบกับดัก' };
+    const lay = this.canModifyLayout(); if (!lay.ok) return lay;
+    const chk = this.canPlaceTrap(t.type, x, y, id); if (!chk.ok) return chk;
+    t.x = x; t.y = y; this.rebuild();
+    return { ok: true };
+  }
+  trapUpgradeCost(t) { return Math.round(TRAPS[t.type].price * BALANCE.traps.upgradeCostMult * t.level); }
   upgradeTrap(id) {
     const t = this.d.traps.find((q) => q.id === id); if (!t) return { ok: false, reason: 'ไม่พบกับดัก' };
     const ws = this.roomsOfType('trap_workshop')[0];
     if (!ws) return { ok: false, reason: 'ต้องมี Trap Workshop' };
     if (t.level >= 5) return { ok: false, reason: 'ระดับสูงสุดแล้ว' };
     if (t.level >= ws.level) return { ok: false, reason: `อัปเกรด Trap Workshop เป็น Lv.${t.level + 1} ก่อน` };
-    if (!this.game.economy.spend('trap_production', this.trapUpgradeCost(t))) return { ok: false, reason: 'Gold ไม่พอ' };
-    t.level++; t.durability = TRAPS[t.type].durability + (t.level - 1) * 10;
+    const cost = this.trapUpgradeCost(t);
+    if (!this.game.economy.spend('trap_production', cost)) return { ok: false, reason: 'Gold ไม่พอ' };
+    t.level++; t.invested = (t.invested || TRAPS[t.type].price) + cost;
+    t.durability = this.game.traps.maxDurability(t);
     return { ok: true };
+  }
+  trapRepairCost(t) {
+    const max = this.game.traps.maxDurability(t);
+    return Math.ceil((max - t.durability) / max * TRAPS[t.type].price * 0.3);
   }
   repairTrap(id) {
     const t = this.d.traps.find((q) => q.id === id); if (!t) return { ok: false, reason: 'ไม่พบกับดัก' };
-    const max = TRAPS[t.type].durability + (t.level - 1) * 10;
+    const max = this.game.traps.maxDurability(t);
     if (t.durability >= max) return { ok: false, reason: 'ยังไม่เสียหาย' };
-    const cost = Math.ceil((max - t.durability) / max * TRAPS[t.type].cost * 0.4);
-    if (!this.game.economy.spend('trap_production', cost)) return { ok: false, reason: 'Gold ไม่พอ' };
+    if (!this.game.economy.spend('trap_production', this.trapRepairCost(t))) return { ok: false, reason: 'Gold ไม่พอ' };
     t.durability = max;
     return { ok: true };
   }
+  trapSellValue(t) { return Math.floor((t.invested || TRAPS[t.type].price) * 0.5); }
   removeTrap(id) {
     const t = this.d.traps.find((q) => q.id === id); if (!t) return { ok: false, reason: 'ไม่พบกับดัก' };
     this.d.traps = this.d.traps.filter((q) => q.id !== id);
-    this.game.economy.earn('refund', Math.floor(TRAPS[t.type].cost * 0.3), false);
+    this.game.economy.earn('refund', this.trapSellValue(t), false);
     this.rebuild();
     return { ok: true };
   }

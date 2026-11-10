@@ -16,6 +16,7 @@ import { TimeManager } from './TimeManager.js';
 import { SaveManager } from './SaveManager.js';
 import { AudioManager } from './AudioManager.js';
 import { FusionManager } from './FusionManager.js';
+import { TrapManager } from './TrapManager.js';
 
 export function createInitialState(seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0) {
   const S = BALANCE.start;
@@ -62,6 +63,7 @@ export class Game {
     this.save = new SaveManager(this, opts.store, opts.fetch);
     this.audio = this.headless ? null : new AudioManager(this);
     this.fusion = new FusionManager(this);
+    this.traps = new TrapManager(this);
     this.accum = 0;
 
     if (fresh) this.startNewGame();
@@ -88,7 +90,7 @@ export class Game {
     this.state.core.maxHp = this.dungeon.coreMaxHp(); this.state.core.hp = this.state.core.maxHp;
     // มอนสเตอร์เริ่มต้น 3 ตัว (GDD §3)
     for (const sp of ['slime', 'goblin', 'skeleton']) { this.state.monsters.push(this.monsters.create(sp)); this.monsters.discover(sp, 'owned'); }
-    this.inventory.add('health_potion', 2);
+    this.inventory.add('red_potion', 3); this.inventory.add('bread', 2); this.inventory.add('hero_meat', 2);
     this.heroes.scheduleDay(0);
     this.state.heroSchedule = this.state.heroSchedule.filter((s) => s.time > this.state.time + 30);
     this.notify('คุณได้รับมรดกดันเจี้ยนเก่าจาก Demon Lord รุ่นก่อน... จงฟื้นฟูมันให้กลายเป็นอาณาจักรมอนสเตอร์!', 'story');
@@ -154,11 +156,12 @@ export class Game {
       this.bus.emit('hour', h % 24);
       if (h % 24 === 0) this.bus.emit('day', h / 24 + 1);
     }
-    for (const t of s.dungeon.traps) { if (t.cd > 0) t.cd -= dt; if (t.fired > 0) t.fired -= dt; }
     if (s.core.hitFlash > 0) s.core.hitFlash -= dt;
     this.heroes.update(dt);
+    this.traps.update(dt);
     this.monsters.update(dt);
     this.fusion.update();
+    this.inventory.update();
     this.combat.tickFx(dt);
     this.state.rngState = this.rng.s;
   }

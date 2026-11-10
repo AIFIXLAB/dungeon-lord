@@ -138,6 +138,7 @@ export class CombatManager {
     if (crit) dmg *= a.critDmg || C.critMultiplier;
     const el = o.element || (kind === 'mag' ? a.element : a.weaponElement || 'physical');
     dmg *= this.elementMult(el, target, d);
+    if (a.dmgBonus?.[el]) dmg *= 1 + a.dmgBonus[el];
     const weak = d.weak || [];
     if (o.aoe && weak.includes('aoe')) dmg *= C.tagWeakness;
     if (kind === 'mag' && weak.includes('magic')) dmg *= C.tagWeakness;
@@ -201,6 +202,7 @@ export class CombatManager {
   heal(src, target, amount) {
     if (target.hp <= 0 || target.downed || (target.side === 'monster' && target.ko)) return 0;
     const max = this.maxHp(target);
+    const ah = this.statusOf(target, 'antiheal'); if (ah) amount *= 1 - (ah.pct || 0.2);
     const before = target.hp;
     target.hp = Math.min(max, target.hp + amount);
     const h = Math.round(target.hp - before);
@@ -223,6 +225,7 @@ export class CombatManager {
     if (!this.hitRoll(att, target)) { this.text(target, 'MISS', '#cccccc'); return; }
     const r = this.computeDamage(att, target, { kind: kind === 'magic' ? 'mag' : 'phys' });
     this.applyDamage(att, target, r.dmg, { crit: r.crit });
+    const ls = this.rawStats(att).lifesteal; if (ls) this.heal(att, att, Math.round(r.dmg * ls));
     this.game.audio?.play(kind === 'melee' ? 'hit' : 'shoot');
   }
 

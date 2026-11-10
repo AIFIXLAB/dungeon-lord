@@ -147,7 +147,7 @@ export class CleaningManager {
         if (c.data.gold) { g.economy.earn('loot_gold', c.data.gold); c.data.gold = 0; }
         const left = [];
         for (const it of c.data.items || []) {
-          if (!g.inventory.add(it.itemId, it.qty, it.rarity)) left.push(it);
+          if (g.inventory.canAdd(it.itemId, it.qty)) g.inventory.add(it.itemId, it.qty); else left.push(it);
         }
         if (left.length) { c.data.items = left; keep.push(c); }
         else g.state.stats.cleaned++;

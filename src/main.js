@@ -3,7 +3,7 @@ import { Game } from './managers/GameManager.js';
 import { Renderer } from './render/Renderer.js';
 import { UI } from './ui/UI.js';
 import { SaveManager, makeLocalStore, CODE_RE, normalizeCode } from './managers/SaveManager.js';
-import { loadAssets, sprite as atlasSprite } from './render/atlas.js';
+import { loadAssets } from './render/atlas.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -45,37 +45,10 @@ class App {
   }
 
   titleLoop() {
-    const cv = $('#titleArt');
-    const ctx = cv.getContext('2d');
     loadAssets();
-    const ids = ['mon_slime', 'mon_goblin', 'mon_skeleton', 'mon_bat', 'mon_wolf', 'mon_imp', 'mon_ghost', 'mon_mushroom', 'mon_slime_king', 'hero_knight_left', 'hero_mage_left', 'hero_warrior_left', 'mon_fire_drake', 'mon_mimic'];
-    const mobs = Array.from({ length: 14 }, (_, i) => ({ id: ids[i % ids.length], x: Math.random(), y: 0.55 + Math.random() * 0.4, v: (Math.random() * 0.4 + 0.2) * (Math.random() < 0.5 ? -1 : 1), p: Math.random() * 6 }));
-    let t = 0;
-    const frame = () => {
-      if ($('#title').classList.contains('hidden')) return;
-      const w = cv.clientWidth, h = cv.clientHeight;
-      if (cv.width !== w) { cv.width = w; cv.height = h; }
-      ctx.clearRect(0, 0, w, h);
-      ctx.imageSmoothingEnabled = false;
-      t += 1 / 60;
-      // ผนังถ้ำ
-      ctx.fillStyle = '#1a1230';
-      for (let i = 0; i < w; i += 24) ctx.fillRect(i, h * 0.5 + Math.sin(i * 0.05) * 8, 24, h);
-      ctx.fillStyle = '#241a3c';
-      for (let i = 0; i < w; i += 32) for (let j = Math.floor(h * 0.56); j < h; j += 32) if ((i / 32 + j / 32) % 2 < 1) ctx.fillRect(i, j, 32, 32);
-      for (const m of mobs) {
-        m.x += m.v * 0.0012; if (m.x < -0.05) m.x = 1.05; if (m.x > 1.05) m.x = -0.05;
-        const a = atlasSprite(m.id); if (!a) continue;
-        const H = 72, W = a.w * H / a.h;
-        const bob = Math.abs(Math.sin(t * 6 + m.p)) * 6;
-        const hero = m.id.startsWith('hero_');
-        ctx.save(); ctx.translate(m.x * w, m.y * h - bob); ctx.scale(hero ? (m.v < 0 ? 1 : -1) : (m.v < 0 ? 1 : -1), 1);
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(a.img, a.x, a.y, a.w, a.h, -W / 2, -H, W, H); ctx.restore();
-      }
-      requestAnimationFrame(frame);
-    };
-    frame();
+    const cv = $('#cover');
+    if (window.__ASSETS__?.cover) cv.src = window.__ASSETS__.cover;
+    cv.onerror = () => { cv.style.display = 'none'; };
   }
 
   start(state, isNew = false) {

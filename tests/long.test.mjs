@@ -32,7 +32,7 @@ while (g.time.day < DAYS) {
       for (const r of s.dungeon.rooms) if (s.gold > 3000) d.upgradeRoom(r.id);
       if (d.roomsOfType('trap_workshop').length && s.gold > 500) {
         const e = d.entrancePos(), c = d.corePos(); const p = d.findPath(e.x, e.y, c.x, c.y);
-        for (const q of p.slice(2, -3)) if (d.canPlaceTrap('spike', Math.floor(q.x), Math.floor(q.y)).ok) { d.placeTrap(g.rng.pick(['spike', 'arrow', 'poison', 'fire']), Math.floor(q.x), Math.floor(q.y)); break; }
+        for (const q of p.slice(2, -3)) if (d.canPlaceTrap('spike_floor', Math.floor(q.x), Math.floor(q.y)).ok) { d.placeTrap(g.rng.pick(['spike_floor', 'wall_arrow', 'poison_arrow', 'fire_vent']), Math.floor(q.x), Math.floor(q.y)); break; }
       }
       for (const t of s.dungeon.traps) if (t.durability <= 0) d.repairTrap(t.id);
     }

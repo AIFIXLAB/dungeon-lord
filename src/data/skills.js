@@ -21,6 +21,7 @@ export const STATUS_INFO = {
   fear: { name: 'Fear', th: 'หวาดกลัว', color: '#c86aa8', flee: 0.3 },
   armor_break: { name: 'Armor Break', th: 'เกราะแตก', color: '#c8a86a', def: -0.3 },
   sick: { name: 'Sick', th: 'ป่วย', color: '#9acd32', all: -0.2 },
+  antiheal: { name: 'Anti-Heal', th: 'ลดการฟื้นฟู', color: '#7a9a4a' },
   // buffs
   atk_up: { name: 'ATK↑', th: 'ATK↑', color: '#ff8a5a', buff: true },
   matk_up: { name: 'MATK↑', th: 'MATK↑', color: '#d88aff', buff: true },
